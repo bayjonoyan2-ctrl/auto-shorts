@@ -3,56 +3,60 @@ import os
 import subprocess
 import re
 
+mode = os.environ.get("MODE", "auto")
 num_shorts = int(os.environ.get("NUM_SHORTS", "3"))
 layout = os.environ.get("LAYOUT", "author")
 
-print(f"🤖 AI scanning audio for peaks...")
-cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
-peak_result = subprocess.run(cmd_scan, capture_output=True, text=True)
-peak_log = peak_result.stderr
+timestamps_input = os.environ.get("TIMESTAMPS", "")
+custom_duration_mins = int(os.environ.get("DURATION_MINS", "0"))
+custom_duration_secs = int(os.environ.get("DURATION_SECS", "30"))
+custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
-timestamps = []
-for line in peak_log.split('\n'):
-    if 'pts_time:' in line and 'RMS_level' in line:
-        match = re.search(r"pts_time:([\d.]+)", line)
-        if match:
-            timestamps.append(float(match.group(1)))
+if mode == "auto":
+    print(f"🤖 AI scanning audio for peaks (Finding {num_shorts} shorts)...")
+    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
+    result = subprocess.run(cmd_scan, capture_output=True, text=True)
+    log = result.stderr
+    
+    timestamps = []
+    for line in log.split('\n'):
+        if 'pts_time:' in line and 'RMS_level' in line:
+            match = re.search(r"pts_time:([\d.]+)", line)
+            if match: timestamps.append(float(match.group(1)))
+            
+    events = []
+    if timestamps:
+        current = [timestamps[0]]
+        for i in range(1, len(timestamps)):
+            if timestamps[i] - timestamps[i-1] < 5.0: current.append(timestamps[i])
+            else:
+                events.append(current); current = [timestamps[i]]
+        events.append(current)
+        
+    clips_to_make = []
+    for i in range(min(num_shorts, len(events))):
+        peak_start = events[i][0]
+        peak_end = events[i][-1]
+        start_sec = max(0, peak_start - 20)
+        duration = (peak_end - start_sec) + 20
+        clips_to_make.append({"start": start_sec, "duration": duration})
 
-# Group peaks that are close together to find the "event"
-events = []
-if timestamps:
-    current_event = [timestamps[0]]
-    for i in range(1, len(timestamps)):
-        if timestamps[i] - timestamps[i-1] < 5.0: # If within 5 seconds, it's the same event
-            current_event.append(timestamps[i])
-        else:
-            events.append(current_event)
-            current_event = [timestamps[i]]
-    events.append(current_event)
-
-# Pick the best events
-best_events = []
-if len(events) > 3:
-    step = len(events) // (num_shorts + 1)
-    for i in range(1, num_shorts + 1):
-        best_events.append(events[i * step])
 else:
-    best_events = events[:num_shorts]
+    print("📝 Manual Mode selected...")
+    clips_to_make = []
+    # Input format: "00:00:10, 00:05:00" (Comma separated)
+    times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
+    for t in times:
+        parts = t.split(":")
+        if len(parts) == 3:
+            h, m, s = parts
+            start_sec = int(h)*3600 + int(m)*60 + int(s)
+            clips_to_make.append({"start": start_sec, "duration": custom_duration})
 
-print(f"✅ AI found {len(best_events)} exciting events!")
-
-for i, event in enumerate(best_events):
-    peak_start = event[0]
-    peak_end = event[-1]
-    
-    # Auto-calculate duration: 20s before + peak duration + 20s after
-    start_sec = max(0, peak_start - 20)
-    duration = (peak_end - start_sec) + 20
-    
-    # Ensure it doesn't exceed 2m 45s (165s) if you want YouTube Shorts limit
-    if duration > 165: duration = 165
-    
-    print(f"Creating Short {i+1}: Starts at {start_sec:.2f}s, Duration: {duration:.2f}s (Peak lasted {peak_end - peak_start:.2f}s)...")
+for i, clip in enumerate(clips_to_make):
+    start_sec = clip["start"]
+    duration = clip["duration"]
+    print(f"Creating Short {i+1} at {start_sec}s for {duration}s...")
     
     if layout == "standard":
         vf = "crop='min(iw,ih*9/16)':ih"
@@ -68,7 +72,6 @@ for i, event in enumerate(best_events):
             f"[bg_cam][game]overlay=0:950[out]"
         )
         cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-filter_complex", filter_complex, "-map", "[out]", "-map", "0:a", "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
-
     subprocess.run(cmd, check=True)
 
 print("✅ All Shorts generated successfully!")

@@ -3,17 +3,29 @@ name: 2. Process Video (No Download)
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'Mode (auto or manual)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+        - auto
+        - manual
       num_shorts:
-        description: 'How many Shorts?'
+        description: 'How many Shorts? (Only for Auto)'
         required: true
         default: '3'
+      timestamps:
+        description: 'Timestamps e.g. 00:01:00, 00:05:30 (Only for Manual)'
+        required: false
+        default: ''
       duration_mins:
-        description: 'Duration Minutes (e.g. 1)'
-        required: true
+        description: 'Duration Minutes (Only for Manual)'
+        required: false
         default: '0'
       duration_secs:
-        description: 'Duration Seconds (e.g. 45)'
-        required: true
+        description: 'Duration Seconds (Only for Manual)'
+        required: false
         default: '30'
       layout:
         description: 'Layout'
@@ -32,25 +44,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      
-      # This downloads the video from the previous workflow
       - name: Download Saved Video
         uses: actions/download-artifact@v4
         with:
           name: downloaded-video
           path: .
-
       - name: Run AI Processor
         env:
+          MODE: ${{ github.event.inputs.mode }}
           NUM_SHORTS: ${{ github.event.inputs.num_shorts }}
+          TIMESTAMPS: ${{ github.event.inputs.timestamps }}
           DURATION_MINS: ${{ github.event.inputs.duration_mins }}
           DURATION_SECS: ${{ github.event.inputs.duration_secs }}
           LAYOUT: ${{ github.event.inputs.layout }}
         run: python scripts/process_saved.py
-
       - name: Upload Shorts
         uses: actions/upload-artifact@v4
         with:
