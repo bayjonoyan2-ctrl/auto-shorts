@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Mode (auto = AI finds peaks, manual = You set times)'
+        description: 'Mode (auto or manual)'
         required: true
         default: 'auto'
         type: choice
@@ -16,7 +16,7 @@ on:
         required: true
         default: '3'
       timestamps:
-        description: 'Manual Mode: Paste list of times (e.g. 00:01:00, 00:05:30)'
+        description: 'Manual Mode: Paste times (e.g. 00:01:00, 00:05:30)'
         required: false
         default: ''
       duration_mins:
@@ -46,11 +46,14 @@ jobs:
           python-version: '3.11'
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      
+      # The fix: Downloads the artifact properly
       - name: Download Saved Video
         uses: actions/download-artifact@v4
         with:
           name: downloaded-video
           path: .
+          
       - name: Run AI Processor
         env:
           MODE: ${{ github.event.inputs.mode }}
