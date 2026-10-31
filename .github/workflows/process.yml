@@ -39,6 +39,9 @@ on:
 jobs:
   process:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,12 +50,14 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       
-      # The fix: Downloads the artifact properly
+      # FIX: Find the latest successful "Download Video" run and grab the artifact
       - name: Download Saved Video
-        uses: actions/download-artifact@v4
-        with:
-          name: downloaded-video
-          path: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_ID=$(gh run list --workflow=download.yml --status=success --limit=1 --json databaseId --jq '.[0].databaseId')
+          echo "Found Download Run ID: $RUN_ID"
+          gh run download $RUN_ID -n downloaded-video
           
       - name: Run AI Processor
         env:
