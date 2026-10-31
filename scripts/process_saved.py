@@ -14,11 +14,13 @@ custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
 clips_to_make = []
 
-# Get video resolution to auto-scale your coordinates
+# Get video resolution safely
 cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", "video.mp4"]
-res = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip().split("x")
-vid_w, vid_h = int(res[0]), int(res[1])
-scale_factor = vid_w / 1920.0 # Your coords are for 1920 width
+res_raw = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip()
+# Extract numbers using regex to avoid linebreak issues
+nums = [int(s) for s in re.findall(r'\d+', res_raw)]
+vid_w, vid_h = nums[0], nums[1]
+scale_factor = vid_w / 1920.0 
 
 if mode == "auto":
     print(f"🤖 AI scanning audio for loudest moments...")
