@@ -6,12 +6,6 @@ on:
       video_url:
         description: 'YouTube or Video URL'
         required: true
-      start_time:
-        description: 'Start time (e.g., 00:01:00)'
-        required: true
-      end_time:
-        description: 'End time (e.g., 00:01:30)'
-        required: true
 
 jobs:
   process_video:
@@ -34,13 +28,11 @@ jobs:
       - name: Run Video Processor
         env:
           VIDEO_URL: ${{ github.event.inputs.video_url }}
-          START_TIME: ${{ github.event.inputs.start_time }}
-          END_TIME: ${{ github.event.inputs.end_time }}
         run: python scripts/process.py
 
-      - name: Upload Finished Short
+      - name: Upload Finished Shorts
         uses: actions/upload-artifact@v4
         with:
-          name: youtube-short
-          path: output_short.mp4
+          name: auto-shorts
+          path: short_*.mp4
           retention-days: 1

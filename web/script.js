@@ -1,7 +1,6 @@
 document.getElementById('short-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    // Ask the user for THEIR token, do not hardcode it!
     const TOKEN = prompt("Please enter your GitHub Personal Access Token (needs 'workflow' permissions):");
     if (!TOKEN) return alert("Token is required to trigger the cloud server.");
 
@@ -9,8 +8,6 @@ document.getElementById('short-form').addEventListener('submit', async (e) => {
     const REPO_NAME = "auto-shorts";
     
     const url = document.getElementById('video_url').value;
-    const start = document.getElementById('start_time').value;
-    const end = document.getElementById('end_time').value;
     
     const btn = document.getElementById('submit-btn');
     const statusDiv = document.getElementById('status');
@@ -31,19 +28,19 @@ document.getElementById('short-form').addEventListener('submit', async (e) => {
             },
             body: JSON.stringify({
                 ref: "main",
-                inputs: { video_url: url, start_time: start, end_time: end }
+                inputs: { video_url: url }
             })
         });
 
         if (response.ok) {
             btn.innerText = "Processing in Cloud...";
-            statusText.innerHTML = `GitHub is downloading and cropping your video. <br><br><a href="https://github.com/${GITHUB_USERNAME}/${REPO_NAME}/actions" target="_blank" style="color:#58a6ff;">Click here to watch the progress and download.</a>`;
+            statusText.innerHTML = `GitHub is downloading and auto-generating your Shorts. <br><br><a href="https://github.com/${GITHUB_USERNAME}/${REPO_NAME}/actions" target="_blank" style="color:#58a6ff;">Click here to watch the progress and download.</a>`;
         } else {
             throw new Error("Failed to trigger workflow. Check your token.");
         }
     } catch (error) {
         statusText.innerText = `❌ Error: ${error.message}`;
         btn.disabled = false;
-        btn.innerText = "Generate Short";
+        btn.innerText = "Generate Shorts Automatically";
     }
 });
