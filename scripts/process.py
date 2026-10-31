@@ -10,7 +10,16 @@ if not video_url:
     sys.exit(1)
 
 print(f"⬇️ Downloading video: {video_url}")
-subprocess.run(["yt-dlp", "-f", "mp4", "-o", "input.mp4", video_url], check=True)
+
+# Fixed: Added --js-runtimes node and changed format to b[ext=mp4]
+cmd_download = [
+    "yt-dlp", 
+    "--js-runtimes", "node", 
+    "-f", "b[ext=mp4]", 
+    "-o", "input.mp4", 
+    video_url
+]
+subprocess.run(cmd_download, check=True)
 
 print(f"✂️ Auto-generating {num_shorts} Shorts...")
 
