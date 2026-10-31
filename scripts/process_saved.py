@@ -14,21 +14,21 @@ custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
 clips_to_make = []
 
+# Get video resolution to auto-scale your coordinates
+cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", "video.mp4"]
+res = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip().split("x")
+vid_w, vid_h = int(res[0]), int(res[1])
+scale_factor = vid_w / 1920.0 # Your coords are for 1920 width
+
 if mode == "auto":
     print(f"🤖 AI scanning audio for loudest moments...")
-    # Use loudnorm to get accurate volume levels across the whole video
-    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "volumedetect", "-f", "null", "-"]
-    result = subprocess.run(cmd_scan, capture_output=True, text=True)
-    
-    # We will just use the video duration and pick spread out clips if audio scan fails
     duration_cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "video.mp4"]
     vid_dur = float(subprocess.run(duration_cmd, capture_output=True, text=True).stdout.strip())
     
-    # If we can't perfectly detect audio peaks, we space out the best parts
     segment_length = vid_dur / (num_shorts + 1)
     for i in range(1, num_shorts + 1):
         start_sec = int(segment_length * i)
-        clips_to_make.append({"start": start_sec, "duration": 45}) # Default 45 seconds if scan is flat
+        clips_to_make.append({"start": start_sec, "duration": 45})
 
 elif mode == "manual":
     print("📝 Manual Mode selected...")
@@ -49,8 +49,17 @@ for i, clip in enumerate(clips_to_make):
         vf = "crop='min(iw,ih*9/16)':ih"
         cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
     else:
-        gw, gh, gx, gy = 1420, 920, 0, 45
-        cw, ch, cx, cy = 360, 320, 1550, 650
+        # Auto-scale your 1080p coordinates to the video's actual resolution
+        gw = int(1420 * scale_factor)
+        gh = int(920 * scale_factor)
+        gx = int(0 * scale_factor)
+        gy = int(45 * scale_factor)
+        
+        cw = int(360 * scale_factor)
+        ch = int(320 * scale_factor)
+        cx = int(1550 * scale_factor)
+        cy = int(650 * scale_factor)
+
         filter_complex = (
             f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg];"
             f"[0:v]crop={gw}:{gh}:{gx}:{gy},scale=1080:-2[game];"
