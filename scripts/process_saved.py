@@ -21,7 +21,7 @@ vid_w, vid_h = nums[0], nums[1]
 scale_factor = vid_w / 1920.0 
 
 if mode == "auto":
-    print(f"🤖 AI scanning audio for loudest moments...")
+    print(f"🤖 AI scanning...")
     duration_cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "video.mp4"]
     vid_dur = float(subprocess.run(duration_cmd, capture_output=True, text=True).stdout.strip())
     
@@ -31,7 +31,7 @@ if mode == "auto":
         clips_to_make.append({"start": start_sec, "duration": 45})
 
 elif mode == "manual":
-    print("📝 Manual Mode selected...")
+    print("📝 Manual Mode...")
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
     for t in times:
         parts = t.split(":")
@@ -43,11 +43,18 @@ elif mode == "manual":
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
     duration = clip["duration"]
+    temp_file = f"temp_{i+1}.mp4"
+    
     print(f"Creating Short {i+1} at {start_sec}s for {duration}s...")
     
+    # STEP 1: Extract the exact clip natively (Fast and fixes missing frames)
+    cmd_extract = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-c", "copy", temp_file]
+    subprocess.run(cmd_extract, check=True)
+
+    # STEP 2: Process the exact clip into the vertical layout (Fixes Audio Sync)
     if layout == "standard":
         vf = "crop='min(iw,ih*9/16)':ih"
-        cmd = ["ffmpeg", "-y", "-accurate_seek", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
+        cmd_final = ["ffmpeg", "-y", "-i", temp_file, "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
     else:
         gw = int(1420 * scale_factor)
         gh = int(920 * scale_factor)
@@ -59,8 +66,6 @@ for i, clip in enumerate(clips_to_make):
         cx = int(1550 * scale_factor)
         cy = int(650 * scale_factor)
 
-        # FIXED: Facecam on top (y=0), Game on bottom (y=800). 
-        # Uses proper scaling without skipping frames.
         filter_complex = (
             f"[0:v]split=3[bg_in][game_in][cam_in];"
             f"[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg];"
@@ -70,19 +75,19 @@ for i, clip in enumerate(clips_to_make):
             f"[bg_cam][game]overlay=0:700[out]"
         )
         
-        cmd = [
-            "ffmpeg", "-y", 
-            "-accurate_seek", # Fixes skipping/sync
-            "-ss", str(start_sec), "-t", str(duration), 
-            "-i", "video.mp4", 
+        cmd_final = [
+            "ffmpeg", "-y", "-i", temp_file, 
             "-filter_complex", filter_complex,
-            "-map", "[out]", 
-            "-map", "0:a", # Fixes missing audio
+            "-map", "[out]", "-map", "0:a",
             "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", 
-            "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2", # Forces sync
+            "-c:a", "aac", "-b:a", "192k", 
             f"short_{i+1}.mp4"
         ]
 
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd_final, check=True)
+    
+    # Clean up the temp file
+    if os.path.exists(temp_file):
+        os.remove(temp_file)
 
 print("✅ All Shorts generated successfully!")
