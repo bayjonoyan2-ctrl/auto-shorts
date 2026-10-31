@@ -1,7 +1,6 @@
 import sys
 import os
 import subprocess
-import json
 import re
 
 num_shorts = int(os.environ.get("NUM_SHORTS", "3"))
@@ -10,38 +9,43 @@ duration_secs = int(os.environ.get("DURATION_SECS", "30"))
 layout = os.environ.get("LAYOUT", "author")
 
 total_duration = (duration_mins * 60) + duration_secs
+if total_duration > 165:
+    total_duration = 165
+    print("⚠️ Duration capped at 2 minutes 45 seconds (165s) for YouTube Shorts.")
 
-# 1. AI BEST CLIPS DETECTION (Scan audio for loudest moments)
-print("🤖 AI scanning video for the most exciting parts (peaks in audio)...")
-# Use ffmpeg to scan the audio track and find the highest volume spikes
+print(f"🤖 AI scanning audio for the best moments (loud peaks)... This might take a few minutes.")
 cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
-result = subprocess.run(cmd_scan, capture_output=True, text=True)
-log = result.stderr
+peak_result = subprocess.run(cmd_scan, capture_output=True, text=True)
+peak_log = peak_result.stderr
 
-# Parse the log to find loud moments
 timestamps = []
-for line in log.split('\n'):
-    if 'pts_time:' in line:
-        time_val = float(re.search(r'pts_time:([0-9.]+)', line).group(1))
-        timestamps.append(time_val)
+for line in peak_log.split('\n'):
+    if 'pts_time:' in line and 'RMS_level' in line:
+        match = re.search(r"pts_time:([\d.]+)", line)
+        if match:
+            timestamps.append(float(match.group(1)))
 
-# Get the best moments (fake AI logic: just pick spread out timestamps)
-# In a real app, you would compare RMS levels. Here we just pick segments.
 best_times = []
-for i in range(num_shorts):
-    best_times.append(i * 60) # Just spacing them out for now
+if len(timestamps) > 3:
+    step = len(timestamps) // (num_shorts + 1)
+    for i in range(1, num_shorts + 1):
+        best_times.append(timestamps[i * step])
+else:
+    for i in range(num_shorts):
+        best_times.append(i * 60)
 
-print(f"✅ Found {len(best_times)} exciting moments!")
+print(f"✅ AI found {len(best_times)} exciting moments!")
 
-# 2. CROP AND CUT
-for i, start_sec in enumerate(best_times):
-    print(f"Creating Short {i+1} at {start_sec}s for {total_duration}s...")
+for i, peak_sec in enumerate(best_times):
+    # Start 20 seconds before the loud moment
+    start_sec = max(0, peak_sec - 20)
+    
+    print(f"Creating Short {i+1} at {start_sec:.2f}s for {total_duration}s (Peak was at {peak_sec:.2f}s)...")
     
     if layout == "standard":
         vf = "crop='min(iw,ih*9/16)':ih"
         cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(total_duration), "-i", "video.mp4", "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
     else:
-        # Your custom Author layout
         gw, gh, gx, gy = 1420, 920, 0, 45
         cw, ch, cx, cy = 360, 320, 1550, 650
         filter_complex = (
@@ -55,4 +59,4 @@ for i, start_sec in enumerate(best_times):
 
     subprocess.run(cmd, check=True)
 
-print("✅ Shorts generated successfully from saved video!")
+print("✅ All Shorts generated successfully!")
