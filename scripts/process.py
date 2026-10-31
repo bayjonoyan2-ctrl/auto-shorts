@@ -11,10 +11,10 @@ if not video_url:
 
 print(f"⬇️ Downloading video: {video_url}")
 
-# Fixed: Added --js-runtimes node and changed format to b[ext=mp4]
+# Tell yt-dlp to use the cookies we just created
 cmd_download = [
     "yt-dlp", 
-    "--js-runtimes", "node", 
+    "--cookies", "cookies.txt",
     "-f", "b[ext=mp4]", 
     "-o", "input.mp4", 
     video_url

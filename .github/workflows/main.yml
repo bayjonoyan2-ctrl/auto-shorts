@@ -29,6 +29,10 @@ jobs:
       - name: Install Python Dependencies
         run: pip install -r scripts/requirements.txt
 
+      # NEW STEP: Create the cookies file securely
+      - name: Create Cookies File
+        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+
       - name: Run Video Processor
         env:
           VIDEO_URL: ${{ github.event.inputs.video_url }}
