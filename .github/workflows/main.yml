@@ -7,46 +7,40 @@ on:
         description: 'YouTube or Video URL'
         required: true
       num_shorts:
-        description: 'Number of Shorts to generate'
+        description: 'Number of Shorts'
         required: true
         default: '3'
+      zoom:
+        description: 'Zoom (1.0 = normal, 1.5 = tighter)'
+        required: true
+        default: '1.0'
 
 jobs:
   process_video:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      # NEW: Install Deno (the recommended JS runtime for yt-dlp)
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: v2.x
-
-      - name: Install Python Dependencies
+      - name: Install Python Deps
         run: pip install -r scripts/requirements.txt
-
-      - name: Create Cookies File
+      - name: Create Cookies
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
-
-      - name: Run Video Processor
+      - name: Run Processor
         env:
           VIDEO_URL: ${{ github.event.inputs.video_url }}
           NUM_SHORTS: ${{ github.event.inputs.num_shorts }}
+          ZOOM: ${{ github.event.inputs.zoom }}
         run: python scripts/process.py
-
-      - name: Upload Finished Shorts
+      - name: Upload Shorts
         uses: actions/upload-artifact@v4
         with:
           name: auto-shorts
           path: short_*.mp4
-          retention-days: 1
