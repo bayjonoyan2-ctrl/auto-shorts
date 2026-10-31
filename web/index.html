@@ -9,6 +9,7 @@
 <body>
     <div class="container">
         <h1>🎬 Auto-Shorts Generator</h1>
+        <p>Free AI video clipping using GitHub's cloud servers.</p>
         
         <form id="short-form">
             <div class="input-group">
@@ -23,9 +24,10 @@
                 </div>
                 <div class="input-group">
                     <label>Layout Style</label>
-                    <select id="layout" style="padding: 10px; border-radius: 6px; background: #0d1117; color: white; border: 1px solid #30363d;">
-                        <option value="custom">Custom (Facecam + Game)</option>
-                        <option value="standard">Standard (Center Crop)</option>
+                    <select id="layout" style="padding: 10px; border-radius: 6px; background: #0d1117; color: white; border: 1px solid #30363d; width: 100%;">
+                        <option value="author">Bayjo Custom (PUBG Layout)</option>
+                        <option value="auto_detect">AI Auto-Detect Facecam</option>
+                        <option value="standard">Standard (Simple Crop)</option>
                     </select>
                 </div>
             </div>

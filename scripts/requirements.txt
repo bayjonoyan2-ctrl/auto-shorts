@@ -1,2 +1,3 @@
 yt-dlp
-moviepy
+opencv-python-headless
+numpy

@@ -1,10 +1,11 @@
 document.getElementById('short-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const TOKEN = prompt("Enter your GitHub Token (needs 'workflow' permissions):");
-    if (!TOKEN) return;
+    if (!TOKEN) return alert("Token is required.");
 
     const GITHUB_USERNAME = "bayjonoyan2-ctrl";
     const REPO_NAME = "auto-shorts";
+    
     const url = document.getElementById('video_url').value;
     const numShorts = document.getElementById('num_shorts').value;
     const layout = document.getElementById('layout').value;

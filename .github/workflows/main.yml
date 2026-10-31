@@ -11,13 +11,14 @@ on:
         required: true
         default: '3'
       layout:
-        description: 'Layout (standard or custom)'
+        description: 'Layout (author, auto_detect, or standard)'
         required: true
-        default: 'custom'
+        default: 'author'
         type: choice
         options:
+        - author
+        - auto_detect
         - standard
-        - custom
 
 jobs:
   process_video:
