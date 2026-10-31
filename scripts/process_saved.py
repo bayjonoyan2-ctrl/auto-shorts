@@ -29,39 +29,53 @@ except:
 target_fps = 30 if orig_fps <= 45 else 60
 
 if mode == "auto":
-    print(f"🤖 AI scanning the ENTIRE video for spikes (gunshots, shouting)...")
+    print(f"🤖 AI scanning for fights/spikes...")
     cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
     result = subprocess.run(cmd_scan, capture_output=True, text=True)
     log = result.stderr
     
-    peaks = []
+    # 1. Find all loud spikes
+    spikes = []
     current_time = 0.0
     for line in log.split('\n'):
         time_match = re.search(r"pts_time:([\d.]+)", line)
         if time_match: current_time = float(time_match.group(1))
-        
         vol_match = re.search(r"RMS_level=([-\d.]+)", line)
         if vol_match and time_match:
-            vol = float(vol_match.group(1))
-            peaks.append((current_time, vol))
+            spikes.append((current_time, float(vol_match.group(1))))
             
-    # Sort by highest volume (loudest spikes at the top)
-    peaks.sort(key=lambda x: x[1], reverse=True)
+    # Sort by loudest to pick the best events globally
+    spikes.sort(key=lambda x: x[1], reverse=True)
     
-    selected_peaks = []
-    for time, vol in peaks:
-        if len(selected_peaks) >= num_shorts: break
-        # Keep them at least 45 seconds apart so they aren't the same fight
-        if all(abs(time - p[0]) > 45 for p in selected_peaks):
-            selected_peaks.append((time, vol))
+    selected_events = []
+    for time, vol in spikes:
+        if len(selected_events) >= num_shorts: break
+        # Keep events 60 seconds apart
+        if all(abs(time - ev[0]) > 60 for ev in selected_events):
+            selected_events.append((time, vol))
             
-    # Sort back to chronological order (earliest first)
-    selected_peaks.sort(key=lambda x: x[0])
-    
-    for time, vol in selected_peaks:
-        # Start 10 seconds before the spike so the viewer sees the build-up
-        start_sec = max(0, int(time - 10)) 
-        clips_to_make.append({"start": start_sec, "duration": 45})
+    # 2. Group spikes into "fights"
+    # If a spike happens within 8 seconds of another, they are part of the same fight.
+    events_grouped = []
+    for base_time, vol in selected_events:
+        group = [base_time]
+        for time, _ in spikes:
+            if base_time - 8 <= time <= base_time + 45: # Look forward 45s for the fight duration
+                group.append(time)
+        events_grouped.append(group)
+
+    # 3. Calculate start/end with 10s padding
+    for group in events_grouped:
+        start_time = min(group)
+        end_time = max(group)
+        
+        start_sec = max(0, start_time - 10)
+        duration = (end_time - start_sec) + 10
+        
+        # Cap at 3 minutes (180s)
+        duration = min(duration, 180)
+        
+        clips_to_make.append({"start": start_sec, "duration": duration})
 
 elif mode == "manual":
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
@@ -72,14 +86,10 @@ elif mode == "manual":
             start_sec = int(h)*3600 + int(m)*60 + int(s)
             clips_to_make.append({"start": start_sec, "duration": custom_duration})
 
-if not clips_to_make:
-    print("❌ Error: No peaks found or no manual timestamps provided.")
-    sys.exit(1)
-
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
     duration = clip["duration"]
-    print(f"Creating Short {i+1} at {start_sec}s for {duration}s...")
+    print(f"Creating Short {i+1}: {start_sec}s to {start_sec+duration}s (Duration: {duration}s)...")
     
     if layout == "standard":
         vf = f"crop='min(iw,ih*9/16)':ih,fps={target_fps}"
@@ -89,7 +99,6 @@ for i, clip in enumerate(clips_to_make):
         gh = int(920 * scale_factor)
         gx = int(0 * scale_factor)
         gy = int(45 * scale_factor)
-        
         cw = int(360 * scale_factor)
         ch = int(320 * scale_factor)
         cx = int(1550 * scale_factor)
@@ -103,7 +112,6 @@ for i, clip in enumerate(clips_to_make):
             f"[bg][game]overlay=(W-w)/2:0[bg_game];"
             f"[bg_game][cam]overlay=(W-w)/2:1000,fps={target_fps}[out]"
         )
-        
         cmd = [
             "ffmpeg", "-y", 
             "-ss", str(start_sec), "-t", str(duration), 
