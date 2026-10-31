@@ -1,0 +1,58 @@
+name: 2. Process Video (No Download)
+
+on:
+  workflow_dispatch:
+    inputs:
+      num_shorts:
+        description: 'How many Shorts?'
+        required: true
+        default: '3'
+      duration_mins:
+        description: 'Duration Minutes (e.g. 1)'
+        required: true
+        default: '0'
+      duration_secs:
+        description: 'Duration Seconds (e.g. 45)'
+        required: true
+        default: '30'
+      layout:
+        description: 'Layout'
+        required: true
+        default: 'author'
+        type: choice
+        options:
+        - author
+        - standard
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      
+      # This downloads the video from the previous workflow
+      - name: Download Saved Video
+        uses: actions/download-artifact@v4
+        with:
+          name: downloaded-video
+          path: .
+
+      - name: Run AI Processor
+        env:
+          NUM_SHORTS: ${{ github.event.inputs.num_shorts }}
+          DURATION_MINS: ${{ github.event.inputs.duration_mins }}
+          DURATION_SECS: ${{ github.event.inputs.duration_secs }}
+          LAYOUT: ${{ github.event.inputs.layout }}
+        run: python scripts/process_saved.py
+
+      - name: Upload Shorts
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-shorts
+          path: short_*.mp4

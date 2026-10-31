@@ -1,0 +1,30 @@
+name: 1. Download Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'YouTube or Video URL'
+        required: true
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Dependencies
+        run: pip install yt-dlp
+      - name: Create Cookies
+        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+      - name: Download
+        run: |
+          yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github -f "b[ext=mp4]" -o "video.mp4" ${{ github.event.inputs.video_url }}
+      - name: Save Video to Cloud
+        uses: actions/upload-artifact@v4
+        with:
+          name: downloaded-video
+          path: video.mp4
+          retention-days: 3
