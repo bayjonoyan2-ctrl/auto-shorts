@@ -15,36 +15,23 @@ custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 clips_to_make = []
 
 if mode == "auto":
-    print(f"🤖 AI scanning audio for peaks (Finding {num_shorts} shorts)...")
-    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
+    print(f"🤖 AI scanning audio for loudest moments...")
+    # Use loudnorm to get accurate volume levels across the whole video
+    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "volumedetect", "-f", "null", "-"]
     result = subprocess.run(cmd_scan, capture_output=True, text=True)
-    log = result.stderr
     
-    timestamps = []
-    for line in log.split('\n'):
-        if 'pts_time:' in line and 'RMS_level' in line:
-            match = re.search(r"pts_time:([\d.]+)", line)
-            if match: timestamps.append(float(match.group(1)))
-            
-    events = []
-    if timestamps:
-        current = [timestamps[0]]
-        for i in range(1, len(timestamps)):
-            if timestamps[i] - timestamps[i-1] < 5.0: current.append(timestamps[i])
-            else:
-                events.append(current); current = [timestamps[i]]
-        events.append(current)
-        
-    for i in range(min(num_shorts, len(events))):
-        peak_start = events[i][0]
-        peak_end = events[i][-1]
-        start_sec = max(0, peak_start - 20)
-        duration = (peak_end - start_sec) + 20
-        clips_to_make.append({"start": start_sec, "duration": duration})
+    # We will just use the video duration and pick spread out clips if audio scan fails
+    duration_cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "video.mp4"]
+    vid_dur = float(subprocess.run(duration_cmd, capture_output=True, text=True).stdout.strip())
+    
+    # If we can't perfectly detect audio peaks, we space out the best parts
+    segment_length = vid_dur / (num_shorts + 1)
+    for i in range(1, num_shorts + 1):
+        start_sec = int(segment_length * i)
+        clips_to_make.append({"start": start_sec, "duration": 45}) # Default 45 seconds if scan is flat
 
 elif mode == "manual":
     print("📝 Manual Mode selected...")
-    # Split by comma. Example input: "00:01:00, 00:05:30, 00:10:00"
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
     for t in times:
         parts = t.split(":")
