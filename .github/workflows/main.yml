@@ -10,10 +10,14 @@ on:
         description: 'Number of Shorts'
         required: true
         default: '3'
-      zoom:
-        description: 'Zoom (1.0 = normal, 1.5 = tighter)'
+      layout:
+        description: 'Layout (standard or custom)'
         required: true
-        default: '1.0'
+        default: 'custom'
+        type: choice
+        options:
+        - standard
+        - custom
 
 jobs:
   process_video:
@@ -37,7 +41,7 @@ jobs:
         env:
           VIDEO_URL: ${{ github.event.inputs.video_url }}
           NUM_SHORTS: ${{ github.event.inputs.num_shorts }}
-          ZOOM: ${{ github.event.inputs.zoom }}
+          LAYOUT: ${{ github.event.inputs.layout }}
         run: python scripts/process.py
       - name: Upload Shorts
         uses: actions/upload-artifact@v4
