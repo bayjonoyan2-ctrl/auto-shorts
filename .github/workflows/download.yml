@@ -23,9 +23,11 @@ jobs:
         run: pip install yt-dlp
       - name: Create Cookies
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
-      - name: Download
+      - name: Download & Fix MP4
         run: |
-          yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github -f "b[ext=mp4]" -o "video.mp4" "${{ github.event.inputs.video_url }}"
+          yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github \
+          --retries infinite --fragment-retries infinite --fixup always \
+          -f "b[ext=mp4]" -o "video.mp4" "${{ github.event.inputs.video_url }}"
       - name: Save Video to Cloud
         uses: actions/upload-artifact@v4
         with:
