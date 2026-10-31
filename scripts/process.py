@@ -11,10 +11,11 @@ if not video_url:
 
 print(f"⬇️ Downloading video: {video_url}")
 
-# Tell yt-dlp to use the cookies we just created
+# Force a different client (android/tv) to bypass SABR restrictions on VODs
 cmd_download = [
     "yt-dlp", 
     "--cookies", "cookies.txt",
+    "--extractor-args", "youtube:player_client=android,web_safari",
     "-f", "b[ext=mp4]", 
     "-o", "input.mp4", 
     video_url
