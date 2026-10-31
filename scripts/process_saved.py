@@ -43,18 +43,23 @@ elif mode == "manual":
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
     duration = clip["duration"]
-    temp_file = f"temp_{i+1}.mp4"
+    temp_vid = f"temp_vid_{i+1}.mp4"
+    temp_aud = f"temp_aud_{i+1}.aac"
     
     print(f"Creating Short {i+1} at {start_sec}s for {duration}s...")
     
-    # STEP 1: Extract the exact clip natively (Fast and fixes missing frames)
-    cmd_extract = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-c", "copy", temp_file]
-    subprocess.run(cmd_extract, check=True)
+    # STEP 1: Extract Video ONLY (no audio) to temp file
+    cmd_vid = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-an", "-c:v", "copy", temp_vid]
+    subprocess.run(cmd_vid, check=True)
 
-    # STEP 2: Process the exact clip into the vertical layout (Fixes Audio Sync)
+    # STEP 2: Extract Audio ONLY to separate file. This fixes desync.
+    cmd_aud = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-vn", "-c:a", "aac", temp_aud]
+    subprocess.run(cmd_aud, check=True)
+
+    # STEP 3: Combine them back together into the vertical layout
     if layout == "standard":
         vf = "crop='min(iw,ih*9/16)':ih"
-        cmd_final = ["ffmpeg", "-y", "-i", temp_file, "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
+        cmd_final = ["ffmpeg", "-y", "-i", temp_vid, "-i", temp_aud, "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
     else:
         gw = int(1420 * scale_factor)
         gh = int(920 * scale_factor)
@@ -76,9 +81,9 @@ for i, clip in enumerate(clips_to_make):
         )
         
         cmd_final = [
-            "ffmpeg", "-y", "-i", temp_file, 
+            "ffmpeg", "-y", "-i", temp_vid, "-i", temp_aud, 
             "-filter_complex", filter_complex,
-            "-map", "[out]", "-map", "0:a",
+            "-map", "[out]", "-map", "1:a",
             "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", 
             "-c:a", "aac", "-b:a", "192k", 
             f"short_{i+1}.mp4"
@@ -86,8 +91,8 @@ for i, clip in enumerate(clips_to_make):
 
     subprocess.run(cmd_final, check=True)
     
-    # Clean up the temp file
-    if os.path.exists(temp_file):
-        os.remove(temp_file)
+    # Cleanup
+    if os.path.exists(temp_vid): os.remove(temp_vid)
+    if os.path.exists(temp_aud): os.remove(temp_aud)
 
 print("✅ All Shorts generated successfully!")
