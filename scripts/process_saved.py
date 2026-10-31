@@ -14,7 +14,6 @@ custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
 clips_to_make = []
 
-# --- 1. GET VIDEO INFO (FPS & RESOLUTION) ---
 cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate", "-of", "csv=s=x:p=0", "video.mp4"]
 res_raw = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip()
 nums = [int(s) for s in re.findall(r'\d+', res_raw)]
@@ -29,15 +28,12 @@ except:
     orig_fps = 30.0
 target_fps = 30 if orig_fps <= 45 else 60
 
-# --- 2. FIND BEST CLIPS ---
 if mode == "auto":
-    print(f"🤖 AI scanning the ENTIRE video for the loudest peaks...")
-    # Use ffmpeg to scan the WHOLE video and output audio volume data
+    print(f"🤖 AI scanning the ENTIRE video for spikes (gunshots, shouting)...")
     cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
     result = subprocess.run(cmd_scan, capture_output=True, text=True)
     log = result.stderr
     
-    # Extract every timestamp and its volume
     peaks = []
     current_time = 0.0
     for line in log.split('\n'):
@@ -49,22 +45,22 @@ if mode == "auto":
             vol = float(vol_match.group(1))
             peaks.append((current_time, vol))
             
-    # Sort by volume (highest first) to find the best moments globally
+    # Sort by highest volume (loudest spikes at the top)
     peaks.sort(key=lambda x: x[1], reverse=True)
     
-    # Pick the top N peaks, but make sure they aren't right next to each other
     selected_peaks = []
     for time, vol in peaks:
         if len(selected_peaks) >= num_shorts: break
-        # Check if this peak is at least 60 seconds away from others we picked
-        if all(abs(time - p[0]) > 60 for p in selected_peaks):
+        # Keep them at least 45 seconds apart so they aren't the same fight
+        if all(abs(time - p[0]) > 45 for p in selected_peaks):
             selected_peaks.append((time, vol))
             
-    # Sort selected peaks back in chronological order (so Short 1 is earliest in the stream)
+    # Sort back to chronological order (earliest first)
     selected_peaks.sort(key=lambda x: x[0])
     
     for time, vol in selected_peaks:
-        start_sec = max(0, int(time - 15)) # Start 15 seconds before the hype
+        # Start 10 seconds before the spike so the viewer sees the build-up
+        start_sec = max(0, int(time - 10)) 
         clips_to_make.append({"start": start_sec, "duration": 45})
 
 elif mode == "manual":
@@ -76,7 +72,10 @@ elif mode == "manual":
             start_sec = int(h)*3600 + int(m)*60 + int(s)
             clips_to_make.append({"start": start_sec, "duration": custom_duration})
 
-# --- 3. BUILD THE SHORTS ---
+if not clips_to_make:
+    print("❌ Error: No peaks found or no manual timestamps provided.")
+    sys.exit(1)
+
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
     duration = clip["duration"]
@@ -86,7 +85,6 @@ for i, clip in enumerate(clips_to_make):
         vf = f"crop='min(iw,ih*9/16)':ih,fps={target_fps}"
         cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-vf", vf, "-af", "aresample=async=1", "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
     else:
-        # --- NEW PROFESSIONAL LAYOUT MATH ---
         gw = int(1420 * scale_factor)
         gh = int(920 * scale_factor)
         gx = int(0 * scale_factor)
@@ -97,9 +95,6 @@ for i, clip in enumerate(clips_to_make):
         cx = int(1550 * scale_factor)
         cy = int(650 * scale_factor)
 
-        # 1. Solid Black Background (no more ugly blur)
-        # 2. Game scaled to 1080 width, placed on top.
-        # 3. Cam scaled to 800 width, placed at bottom (y=1000).
         filter_complex = (
             f"[0:v]split=2[game_in][cam_in];"
             f"color=c=black:s=1080x1920[bg];"
