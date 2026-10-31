@@ -26,10 +26,15 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
+      # NEW: Install Deno (the recommended JS runtime for yt-dlp)
+      - name: Install Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v2.x
+
       - name: Install Python Dependencies
         run: pip install -r scripts/requirements.txt
 
-      # NEW STEP: Create the cookies file securely
       - name: Create Cookies File
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
 

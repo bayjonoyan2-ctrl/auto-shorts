@@ -11,11 +11,12 @@ if not video_url:
 
 print(f"⬇️ Downloading video: {video_url}")
 
-# Force a different client (android/tv) to bypass SABR restrictions on VODs
+# Fixed: Use Deno runtime + allow downloading the EJS solver script
 cmd_download = [
     "yt-dlp", 
     "--cookies", "cookies.txt",
-    "--extractor-args", "youtube:player_client=android,web_safari",
+    "--js-runtimes", "deno",
+    "--remote-components", "ejs:github",
     "-f", "b[ext=mp4]", 
     "-o", "input.mp4", 
     video_url
