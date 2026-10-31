@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Mode (auto or manual)'
+        description: 'Mode (auto = AI finds peaks, manual = You set times)'
         required: true
         default: 'auto'
         type: choice
@@ -12,19 +12,19 @@ on:
         - auto
         - manual
       num_shorts:
-        description: 'How many Shorts? (Only for Auto)'
+        description: 'How many Shorts? (Auto Mode only)'
         required: true
         default: '3'
       timestamps:
-        description: 'Timestamps e.g. 00:01:00, 00:05:30 (Only for Manual)'
+        description: 'Manual Mode: Paste list of times (e.g. 00:01:00, 00:05:30)'
         required: false
         default: ''
       duration_mins:
-        description: 'Duration Minutes (Only for Manual)'
+        description: 'Manual Mode: Duration Minutes'
         required: false
         default: '0'
       duration_secs:
-        description: 'Duration Seconds (Only for Manual)'
+        description: 'Manual Mode: Duration Seconds'
         required: false
         default: '30'
       layout:

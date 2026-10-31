@@ -12,6 +12,8 @@ custom_duration_mins = int(os.environ.get("DURATION_MINS", "0"))
 custom_duration_secs = int(os.environ.get("DURATION_SECS", "30"))
 custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
+clips_to_make = []
+
 if mode == "auto":
     print(f"🤖 AI scanning audio for peaks (Finding {num_shorts} shorts)...")
     cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
@@ -33,7 +35,6 @@ if mode == "auto":
                 events.append(current); current = [timestamps[i]]
         events.append(current)
         
-    clips_to_make = []
     for i in range(min(num_shorts, len(events))):
         peak_start = events[i][0]
         peak_end = events[i][-1]
@@ -41,10 +42,9 @@ if mode == "auto":
         duration = (peak_end - start_sec) + 20
         clips_to_make.append({"start": start_sec, "duration": duration})
 
-else:
+elif mode == "manual":
     print("📝 Manual Mode selected...")
-    clips_to_make = []
-    # Input format: "00:00:10, 00:05:00" (Comma separated)
+    # Split by comma. Example input: "00:01:00, 00:05:30, 00:10:00"
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
     for t in times:
         parts = t.split(":")
@@ -72,6 +72,7 @@ for i, clip in enumerate(clips_to_make):
             f"[bg_cam][game]overlay=0:950[out]"
         )
         cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-filter_complex", filter_complex, "-map", "[out]", "-map", "0:a", "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
+
     subprocess.run(cmd, check=True)
 
 print("✅ All Shorts generated successfully!")
