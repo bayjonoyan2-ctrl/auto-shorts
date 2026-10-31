@@ -8,6 +8,7 @@ document.getElementById('short-form').addEventListener('submit', async (e) => {
     const REPO_NAME = "auto-shorts";
     
     const url = document.getElementById('video_url').value;
+    const numShorts = document.getElementById('num_shorts').value;
     
     const btn = document.getElementById('submit-btn');
     const statusDiv = document.getElementById('status');
@@ -28,7 +29,7 @@ document.getElementById('short-form').addEventListener('submit', async (e) => {
             },
             body: JSON.stringify({
                 ref: "main",
-                inputs: { video_url: url }
+                inputs: { video_url: url, num_shorts: numShorts }
             })
         });
 

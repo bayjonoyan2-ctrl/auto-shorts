@@ -9,12 +9,17 @@
 <body>
     <div class="container">
         <h1>🎬 Auto-Shorts Generator</h1>
-        <p>Paste a video URL and our AI will automatically find the best parts and generate 3 Shorts for you.</p>
+        <p>Paste a video URL and our AI will automatically find the best parts and generate Shorts for you.</p>
         
         <form id="short-form">
             <div class="input-group">
                 <label>Video URL (YouTube, Twitch VOD, etc.)</label>
                 <input type="url" id="video_url" placeholder="https://youtube.com/watch?v=..." required>
+            </div>
+
+            <div class="input-group">
+                <label>How many Shorts?</label>
+                <input type="number" id="num_shorts" value="3" min="1" max="10" required>
             </div>
             
             <button type="submit" id="submit-btn">Generate Shorts Automatically</button>

@@ -6,6 +6,10 @@ on:
       video_url:
         description: 'YouTube or Video URL'
         required: true
+      num_shorts:
+        description: 'Number of Shorts to generate'
+        required: true
+        default: '3'
 
 jobs:
   process_video:
@@ -28,6 +32,7 @@ jobs:
       - name: Run Video Processor
         env:
           VIDEO_URL: ${{ github.event.inputs.video_url }}
+          NUM_SHORTS: ${{ github.event.inputs.num_shorts }}
         run: python scripts/process.py
 
       - name: Upload Finished Shorts

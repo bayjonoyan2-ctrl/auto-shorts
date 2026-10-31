@@ -3,6 +3,7 @@ import os
 import subprocess
 
 video_url = os.environ.get("VIDEO_URL")
+num_shorts = int(os.environ.get("NUM_SHORTS", "3"))
 
 if not video_url:
     print("❌ Error: VIDEO_URL is missing.")
@@ -11,13 +12,12 @@ if not video_url:
 print(f"⬇️ Downloading video: {video_url}")
 subprocess.run(["yt-dlp", "-f", "mp4", "-o", "input.mp4", video_url], check=True)
 
-print("✂️ Auto-generating 3 Shorts from different parts of the video...")
+print(f"✂️ Auto-generating {num_shorts} Shorts...")
 
-for i in range(1, 4):
+for i in range(1, num_shorts + 1):
     start_sec = (i - 1) * 45 
     print(f"Creating Short {i} starting at {start_sec}s...")
     
-    # Fixed the crop formula for newer FFmpeg versions
     cmd = [
         "ffmpeg", "-y", "-ss", str(start_sec), "-t", "30", 
         "-i", "input.mp4",
