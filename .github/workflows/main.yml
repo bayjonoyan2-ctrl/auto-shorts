@@ -1,0 +1,46 @@
+name: Auto-Shorts Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'YouTube or Video URL'
+        required: true
+      start_time:
+        description: 'Start time (e.g., 00:01:00)'
+        required: true
+      end_time:
+        description: 'End time (e.g., 00:01:30)'
+        required: true
+
+jobs:
+  process_video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Python Dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run Video Processor
+        env:
+          VIDEO_URL: ${{ github.event.inputs.video_url }}
+          START_TIME: ${{ github.event.inputs.start_time }}
+          END_TIME: ${{ github.event.inputs.end_time }}
+        run: python scripts/process.py
+
+      - name: Upload Finished Short
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-short
+          path: output_short.mp4
+          retention-days: 1

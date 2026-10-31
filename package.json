@@ -1,0 +1,10 @@
+{
+  "name": "auto-shorts",
+  "version": "0.1.0",
+  "description": "Generate 9:16 YouTube Shorts from landscape videos using GitHub Actions.",
+  "scripts": {
+    "start": "npx serve web"
+  },
+  "author": "bayjonoyan2-ctrl",
+  "license": "MIT"
+}

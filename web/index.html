@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Shorts Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Auto-Shorts Generator</h1>
+        <p>Convert landscape videos into 9:16 YouTube Shorts using GitHub Actions.</p>
+        
+        <form id="short-form">
+            <div class="input-group">
+                <label>Video URL (YouTube, Twitch VOD, etc.)</label>
+                <input type="url" id="video_url" placeholder="https://youtube.com/watch?v=..." required>
+            </div>
+            
+            <div class="row">
+                <div class="input-group">
+                    <label>Start Time</label>
+                    <input type="text" id="start_time" placeholder="00:01:00" required>
+                </div>
+                <div class="input-group">
+                    <label>End Time</label>
+                    <input type="text" id="end_time" placeholder="00:01:30" required>
+                </div>
+            </div>
+            
+            <button type="submit" id="submit-btn">Generate Short</button>
+        </form>
+
+        <div id="status" class="hidden">
+            <p id="status-text">Processing... Please wait.</p>
+            <a id="download-link" href="#" target="_blank" class="hidden">⬇️ Download Your Short</a>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
