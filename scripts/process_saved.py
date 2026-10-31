@@ -14,29 +14,57 @@ custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
 clips_to_make = []
 
+# --- 1. GET VIDEO INFO (FPS & RESOLUTION) ---
 cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate", "-of", "csv=s=x:p=0", "video.mp4"]
 res_raw = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip()
 nums = [int(s) for s in re.findall(r'\d+', res_raw)]
 vid_w, vid_h = nums[0], nums[1]
 scale_factor = vid_w / 1920.0 
 
-# Get FPS and set to nearest standard (30 or 60)
 fps_raw = res_raw.split("x")[-1] if "x" in res_raw else "30/1"
 try:
     num, den = fps_raw.split("/")
     orig_fps = float(num) / float(den)
 except:
     orig_fps = 30.0
-
 target_fps = 30 if orig_fps <= 45 else 60
-print(f"🎥 Detected {orig_fps:.2f} FPS. Converting to {target_fps} FPS for perfect sync.")
 
+# --- 2. FIND BEST CLIPS ---
 if mode == "auto":
-    duration_cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "video.mp4"]
-    vid_dur = float(subprocess.run(duration_cmd, capture_output=True, text=True).stdout.strip())
-    segment_length = vid_dur / (num_shorts + 1)
-    for i in range(1, num_shorts + 1):
-        start_sec = int(segment_length * i)
+    print(f"🤖 AI scanning the ENTIRE video for the loudest peaks...")
+    # Use ffmpeg to scan the WHOLE video and output audio volume data
+    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
+    result = subprocess.run(cmd_scan, capture_output=True, text=True)
+    log = result.stderr
+    
+    # Extract every timestamp and its volume
+    peaks = []
+    current_time = 0.0
+    for line in log.split('\n'):
+        time_match = re.search(r"pts_time:([\d.]+)", line)
+        if time_match: current_time = float(time_match.group(1))
+        
+        vol_match = re.search(r"RMS_level=([-\d.]+)", line)
+        if vol_match and time_match:
+            vol = float(vol_match.group(1))
+            peaks.append((current_time, vol))
+            
+    # Sort by volume (highest first) to find the best moments globally
+    peaks.sort(key=lambda x: x[1], reverse=True)
+    
+    # Pick the top N peaks, but make sure they aren't right next to each other
+    selected_peaks = []
+    for time, vol in peaks:
+        if len(selected_peaks) >= num_shorts: break
+        # Check if this peak is at least 60 seconds away from others we picked
+        if all(abs(time - p[0]) > 60 for p in selected_peaks):
+            selected_peaks.append((time, vol))
+            
+    # Sort selected peaks back in chronological order (so Short 1 is earliest in the stream)
+    selected_peaks.sort(key=lambda x: x[0])
+    
+    for time, vol in selected_peaks:
+        start_sec = max(0, int(time - 15)) # Start 15 seconds before the hype
         clips_to_make.append({"start": start_sec, "duration": 45})
 
 elif mode == "manual":
@@ -48,6 +76,7 @@ elif mode == "manual":
             start_sec = int(h)*3600 + int(m)*60 + int(s)
             clips_to_make.append({"start": start_sec, "duration": custom_duration})
 
+# --- 3. BUILD THE SHORTS ---
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
     duration = clip["duration"]
@@ -57,6 +86,7 @@ for i, clip in enumerate(clips_to_make):
         vf = f"crop='min(iw,ih*9/16)':ih,fps={target_fps}"
         cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-vf", vf, "-af", "aresample=async=1", "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
     else:
+        # --- NEW PROFESSIONAL LAYOUT MATH ---
         gw = int(1420 * scale_factor)
         gh = int(920 * scale_factor)
         gx = int(0 * scale_factor)
@@ -67,13 +97,16 @@ for i, clip in enumerate(clips_to_make):
         cx = int(1550 * scale_factor)
         cy = int(650 * scale_factor)
 
+        # 1. Solid Black Background (no more ugly blur)
+        # 2. Game scaled to 1080 width, placed on top.
+        # 3. Cam scaled to 800 width, placed at bottom (y=1000).
         filter_complex = (
-            f"[0:v]split=3[bg_in][game_in][cam_in];"
-            f"[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg];"
+            f"[0:v]split=2[game_in][cam_in];"
+            f"color=c=black:s=1080x1920[bg];"
             f"[game_in]crop={gw}:{gh}:{gx}:{gy},scale=1080:-2[game];"
             f"[cam_in]crop={cw}:{ch}:{cx}:{cy},scale=800:-2[cam];"
-            f"[bg][cam]overlay=(W-w)/2:50[bg_cam];"
-            f"[bg_cam][game]overlay=0:700,fps={target_fps}[out]"
+            f"[bg][game]overlay=(W-w)/2:0[bg_game];"
+            f"[bg_game][cam]overlay=(W-w)/2:1000,fps={target_fps}[out]"
         )
         
         cmd = [
