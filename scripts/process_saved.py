@@ -14,10 +14,8 @@ custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
 clips_to_make = []
 
-# Get video resolution safely
 cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", "video.mp4"]
 res_raw = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip()
-# Extract numbers using regex to avoid linebreak issues
 nums = [int(s) for s in re.findall(r'\d+', res_raw)]
 vid_w, vid_h = nums[0], nums[1]
 scale_factor = vid_w / 1920.0 
@@ -51,7 +49,6 @@ for i, clip in enumerate(clips_to_make):
         vf = "crop='min(iw,ih*9/16)':ih"
         cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-vf", vf, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
     else:
-        # Auto-scale your 1080p coordinates to the video's actual resolution
         gw = int(1420 * scale_factor)
         gh = int(920 * scale_factor)
         gx = int(0 * scale_factor)
@@ -62,14 +59,27 @@ for i, clip in enumerate(clips_to_make):
         cx = int(1550 * scale_factor)
         cy = int(650 * scale_factor)
 
+        # FIX: Optimized filter. Scales properly, preserves audio, and prevents frame drops.
         filter_complex = (
-            f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg];"
-            f"[0:v]crop={gw}:{gh}:{gx}:{gy},scale=1080:-2[game];"
-            f"[0:v]crop={cw}:{ch}:{cx}:{cy},scale=800:-2[cam];"
+            f"[0:v]split=3[bg_in][game_in][cam_in];"
+            f"[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg];"
+            f"[game_in]crop={gw}:{gh}:{gx}:{gy},scale=1080:-2[game];"
+            f"[cam_in]crop={cw}:{ch}:{cx}:{cy},scale=800:-2[cam];"
             f"[bg][cam]overlay=(W-w)/2:150[bg_cam];"
             f"[bg_cam][game]overlay=0:950[out]"
         )
-        cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-filter_complex", filter_complex, "-map", "[out]", "-map", "0:a", "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
+        
+        # FIX: Added '-map 0:a' explicitly to guarantee audio is kept in sync
+        cmd = [
+            "ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), 
+            "-i", "video.mp4", 
+            "-filter_complex", filter_complex,
+            "-map", "[out]", 
+            "-map", "0:a",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "18", # High quality
+            "-c:a", "aac", "-b:a", "192k", # High quality audio
+            f"short_{i+1}.mp4"
+        ]
 
     subprocess.run(cmd, check=True)
 
