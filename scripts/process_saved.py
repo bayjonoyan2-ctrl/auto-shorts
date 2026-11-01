@@ -34,7 +34,6 @@ if mode == "auto":
     result = subprocess.run(cmd_scan, capture_output=True, text=True)
     log = result.stderr
     
-    # 1. Find all loud spikes
     spikes = []
     current_time = 0.0
     for line in log.split('\n'):
@@ -44,38 +43,26 @@ if mode == "auto":
         if vol_match and time_match:
             spikes.append((current_time, float(vol_match.group(1))))
             
-    # Sort by loudest to pick the best events globally
     spikes.sort(key=lambda x: x[1], reverse=True)
     
     selected_events = []
     for time, vol in spikes:
         if len(selected_events) >= num_shorts: break
-        # Keep events 60 seconds apart
         if all(abs(time - ev[0]) > 60 for ev in selected_events):
             selected_events.append((time, vol))
             
-    # 2. Group spikes into "fights"
-    # If a spike happens within 8 seconds of another, they are part of the same fight.
-    events_grouped = []
     for base_time, vol in selected_events:
-        group = [base_time]
-        for time, _ in spikes:
-            if base_time - 8 <= time <= base_time + 45: # Look forward 45s for the fight duration
-                group.append(time)
-        events_grouped.append(group)
-
-    # 3. Calculate start/end with 10s padding
-    for group in events_grouped:
-        start_time = min(group)
-        end_time = max(group)
+        # Find all spikes within 45 seconds of this peak (the duration of a fight)
+        fight_times = [t for t, _ in spikes if base_time <= t <= base_time + 45]
         
-        start_sec = max(0, start_time - 10)
-        duration = (end_time - start_sec) + 10
-        
-        # Cap at 3 minutes (180s)
-        duration = min(duration, 180)
-        
-        clips_to_make.append({"start": start_sec, "duration": duration})
+        if fight_times:
+            end_time = max(fight_times)
+            start_sec = max(0, base_time - 10) # 10s before
+            duration = (end_time - start_sec) + 10 # 10s after
+            
+            duration = min(duration, 180) # Cap at 3 minutes
+            print(f"🔥 Found fight starting at {start_sec}s, lasting {int(duration)}s!")
+            clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
 
 elif mode == "manual":
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
@@ -86,10 +73,14 @@ elif mode == "manual":
             start_sec = int(h)*3600 + int(m)*60 + int(s)
             clips_to_make.append({"start": start_sec, "duration": custom_duration})
 
+if not clips_to_make:
+    print("❌ Error: No fights found or no manual timestamps provided.")
+    sys.exit(1)
+
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
     duration = clip["duration"]
-    print(f"Creating Short {i+1}: {start_sec}s to {start_sec+duration}s (Duration: {duration}s)...")
+    print(f"Creating Short {i+1} at {start_sec}s for {duration}s...")
     
     if layout == "standard":
         vf = f"crop='min(iw,ih*9/16)':ih,fps={target_fps}"
@@ -112,6 +103,7 @@ for i, clip in enumerate(clips_to_make):
             f"[bg][game]overlay=(W-w)/2:0[bg_game];"
             f"[bg_game][cam]overlay=(W-w)/2:1000,fps={target_fps}[out]"
         )
+        
         cmd = [
             "ffmpeg", "-y", 
             "-ss", str(start_sec), "-t", str(duration), 
