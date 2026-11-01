@@ -2,7 +2,6 @@ import sys
 import os
 import subprocess
 import re
-import wave
 import audioop
 
 mode = os.environ.get("MODE", "auto")
@@ -16,7 +15,6 @@ custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
 clips_to_make = []
 
-# 1. Get Video Info
 cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate", "-of", "csv=s=x:p=0", "video.mp4"]
 res_raw = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip()
 nums = [int(s) for s in re.findall(r'\d+', res_raw)]
@@ -32,28 +30,25 @@ except:
 target_fps = 30 if orig_fps <= 45 else 60
 
 if mode == "auto":
-    print("🤖 Extracting audio track for FAST scanning...")
-    # Extract audio to WAV
-    subprocess.run(["ffmpeg", "-y", "-i", "video.mp4", "-vn", "-acodec", "pcm_s16le", "-ar", "8000", "-ac", "1", "audio.wav"], check=True)
+    print("🤖 Extracting audio to RAM...")
+    # Pipe audio directly to memory instead of saving to disk
+    cmd_audio = ["ffmpeg", "-i", "video.mp4", "-vn", "-acodec", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "s16le", "-"]
+    result = subprocess.run(cmd_audio, capture_output=True)
+    raw_audio = result.stdout
     
-    print("🤖 Scanning audio data for spikes...")
-    with wave.open("audio.wav", 'rb') as wf:
-        chunk_size = 8000 # 1 second of audio
-        max_frames = []
-        current_sec = 0
-        while True:
-            data = wf.readframes(chunk_size)
-            if not data: break
+    print("🤖 Scanning audio memory for spikes...")
+    chunk_size = 16000 # 1 second
+    max_frames = []
+    
+    for i in range(0, len(raw_audio), chunk_size):
+        chunk = raw_audio[i:i+chunk_size]
+        if len(chunk) < chunk_size: break
+        try:
+            max_val = audioop.max(chunk, 2)
+            max_frames.append((i // chunk_size, max_val))
+        except:
+            pass
             
-            # Get max volume of this 1-second chunk
-            try:
-                max_val = audioop.max(data, 2)
-                max_frames.append((current_sec, max_val))
-            except:
-                pass
-            current_sec += 1
-            
-    # Sort by loudest
     max_frames.sort(key=lambda x: x[1], reverse=True)
     
     selected_events = []
@@ -67,9 +62,6 @@ if mode == "auto":
     for time, vol in selected_events:
         start_sec = max(0, int(time - 10))
         clips_to_make.append({"start": int(start_sec), "duration": 60})
-        
-    if os.path.exists("audio.wav"):
-        os.remove("audio.wav")
 
 elif mode == "manual":
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
