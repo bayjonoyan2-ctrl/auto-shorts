@@ -34,39 +34,53 @@ if mode == "auto":
     result = subprocess.run(cmd_scan, capture_output=True, text=True)
     log = result.stderr
     
+    # --- REAL FIX: Robust parsing of FFmpeg output ---
     spikes = []
     current_time = 0.0
     for line in log.split('\n'):
-        time_match = re.search(r"pts_time:([\d.]+)", line)
-        if time_match: current_time = float(time_match.group(1))
-        vol_match = re.search(r"RMS_level=([-\d.]+)", line)
-        if vol_match and time_match:
-            spikes.append((current_time, float(vol_match.group(1))))
+        # 1. Get the timestamp
+        if 'pts_time:' in line:
+            try:
+                current_time = float(line.split('pts_time:')[1].split(' ')[0])
+            except:
+                pass
+                
+        # 2. Get the volume level
+        if 'RMS_level=' in line:
+            try:
+                vol_str = line.split('RMS_level=')[1].split(' ')[0]
+                vol = float(vol_str)
+                spikes.append((current_time, vol))
+            except:
+                pass
+                
+    print(f"✅ Analyzed audio, found {len(spikes)} distinct volume data points.")
             
-    # Sort by highest volume
+    # Sort by loudest volume
     spikes.sort(key=lambda x: x[1], reverse=True)
     
-    # Just grab the top N moments (no threshold, just the loudest)
     selected_events = []
     for time, vol in spikes:
         if len(selected_events) >= num_shorts: break
-        if all(abs(time - ev[0]) > 45 for ev in selected_events):
+        # Ensure clips are at least 60 seconds apart
+        if all(abs(time - ev[0]) > 60 for ev in selected_events):
             selected_events.append((time, vol))
             
-    # Sort chronologically
+    # Sort chronologically for processing
     selected_events.sort(key=lambda x: x[0])
     
     for time, vol in selected_events:
         start_sec = max(0, int(time - 10))
-        duration = 45 # Default duration
-        # Look forward 45 seconds for other loud spikes to extend the clip
+        duration = 45 
+        
+        # Extend clip if there are multiple spikes close together
         extended_times = [t for t, _ in spikes if time <= t <= time + 45]
         if extended_times:
             end_time = max(extended_times)
             duration = (end_time - start_sec) + 10
-            duration = min(duration, 180) # Cap at 3 minutes
+            duration = min(duration, 180)
         
-        print(f"🔥 Found fight at {start_sec}s, lasting {int(duration)}s")
+        print(f"🔥 Found loud moment at {start_sec}s, lasting {int(duration)}s")
         clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
 
 elif mode == "manual":
