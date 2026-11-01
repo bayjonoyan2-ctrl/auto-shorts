@@ -15,19 +15,11 @@ custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
 clips_to_make = []
 
-cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate", "-of", "csv=s=x:p=0", "video.mp4"]
+# Safely get video info
+cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", "video.mp4"]
 res_raw = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip()
 nums = [int(s) for s in re.findall(r'\d+', res_raw)]
 vid_w, vid_h = nums[0], nums[1]
-scale_factor = vid_w / 1920.0 
-
-fps_raw = res_raw.split("x")[-1] if "x" in res_raw else "30/1"
-try:
-    num, den = fps_raw.split("/")
-    orig_fps = float(num) / float(den)
-except:
-    orig_fps = 30.0
-target_fps = 30 if orig_fps <= 45 else 60
 
 if mode == "auto":
     print("🤖 Extracting audio to RAM...")
@@ -81,25 +73,17 @@ for i, clip in enumerate(clips_to_make):
     print(f"Creating Short {i+1} at {start_sec}s for {duration}s...")
     
     if layout == "standard":
-        vf = f"crop='min(iw,ih*9/16)':ih,fps={target_fps}"
+        vf = f"crop='min(iw,ih*9/16)':ih,fps=30"
         cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-vf", vf, "-af", "aresample=async=1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-c:a", "aac", "-b:a", "128k", f"short_{i+1}.mp4"]
     else:
-        gw = int(1420 * scale_factor)
-        gh = int(920 * scale_factor)
-        gx = int(0 * scale_factor)
-        gy = int(45 * scale_factor)
-        cw = int(360 * scale_factor)
-        ch = int(320 * scale_factor)
-        cx = int(1550 * scale_factor)
-        cy = int(650 * scale_factor)
-
+        # HARDCODED SAFE SCALING - No math errors possible
         filter_complex = (
             f"[0:v]split=2[game_in][cam_in];"
             f"color=c=black:s=1080x1920[bg];"
-            f"[game_in]crop={gw}:{gh}:{gx}:{gy},scale=1080:-2[game];"
-            f"[cam_in]crop={cw}:{ch}:{cx}:{cy},scale=800:-2[cam];"
+            f"[game_in]crop=iw*0.7:ih*0.7:0:0,scale=1080:-2[game];"
+            f"[cam_in]crop=iw*0.3:ih*0.3:iw*0.7:ih*0.7,scale=800:-2[cam];"
             f"[bg][game]overlay=(W-w)/2:0[bg_game];"
-            f"[bg_game][cam]overlay=(W-w)/2:1000,fps={target_fps}[out]"
+            f"[bg_game][cam]overlay=(W-w)/2:1000[out]"
         )
         
         cmd = [
