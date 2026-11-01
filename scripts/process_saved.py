@@ -29,41 +29,41 @@ except:
 target_fps = 30 if orig_fps <= 45 else 60
 
 if mode == "auto":
-    print(f"🤖 Running FAST native FFmpeg scanner...")
-    # Using silencedetect to find loud moments natively in milliseconds
-    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "silencedetect=noise=-30dB:d=1", "-f", "null", "-"]
+    print(f"🤖 Running FAST native FFmpeg scanner (1s intervals)...")
+    # Using asetnsamples to output ONLY 1 line per second. Very fast.
+    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "asetnsamples=44100,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
     result = subprocess.run(cmd_scan, capture_output=True, text=True)
     log = result.stderr
     
-    # Native FFmpeg outputs 'silence_start' and 'silence_end'. 
-    # Loud moments are the gaps BETWEEN silence.
-    silences = []
+    spikes = []
+    current_time = 0.0
     for line in log.split('\n'):
-        if 'silence_start:' in line:
-            try: silences.append(float(line.split('silence_start:')[1].split()[0]))
+        if 'pts_time:' in line:
+            try: current_time = float(line.split('pts_time:')[1].split(' ')[0])
             except: pass
-        elif 'silence_end:' in line:
-            try: silences.append(float(line.split('silence_end:')[1].split()[0]))
+        if 'RMS_level=' in line:
+            try:
+                vol = float(line.split('RMS_level=')[1].split(' ')[0])
+                if vol > -50: # Ignore absolute silence
+                    spikes.append((current_time, vol))
             except: pass
-            
-    # If we found silences, the loud parts are between them. 
-    # If the video is constant action (no silence), we just space them out.
-    if len(silences) > 2:
-        # Pick gaps
-        for i in range(0, len(silences)-1, 2):
-            if len(clips_to_make) >= num_shorts: break
-            start = int(silences[i])
-            # avoid duplicates
-            if not any(abs(start - c["start"]) < 60 for c in clips_to_make):
-                clips_to_make.append({"start": start, "duration": 60})
                 
-    # Fallback if no silence found (constant gameplay)
-    if not clips_to_make:
-        duration_cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "video.mp4"]
-        vid_dur = float(subprocess.run(duration_cmd, capture_output=True, text=True).stdout.strip())
-        segment_length = vid_dur / (num_shorts + 1)
-        for i in range(1, num_shorts + 1):
-            clips_to_make.append({"start": int(segment_length * i), "duration": 60})
+    print(f"✅ Analyzed audio (found {len(spikes)} data points).")
+            
+    spikes.sort(key=lambda x: x[1], reverse=True)
+    
+    selected_events = []
+    for time, vol in spikes:
+        if len(selected_events) >= num_shorts: break
+        if all(abs(time - ev[0]) > 60 for ev in selected_events):
+            selected_events.append((time, vol))
+            
+    selected_events.sort(key=lambda x: x[0])
+    
+    for time, vol in selected_events:
+        start_sec = max(0, int(time - 10))
+        duration = 60 
+        clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
 
 elif mode == "manual":
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
