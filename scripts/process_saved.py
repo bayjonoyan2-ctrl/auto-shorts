@@ -29,7 +29,7 @@ except:
 target_fps = 30 if orig_fps <= 45 else 60
 
 if mode == "auto":
-    print(f"🤖 AI scanning for fights/spikes...")
+    print(f"🤖 AI scanning for loudest moments...")
     cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
     result = subprocess.run(cmd_scan, capture_output=True, text=True)
     log = result.stderr
@@ -43,26 +43,31 @@ if mode == "auto":
         if vol_match and time_match:
             spikes.append((current_time, float(vol_match.group(1))))
             
+    # Sort by highest volume
     spikes.sort(key=lambda x: x[1], reverse=True)
     
+    # Just grab the top N moments (no threshold, just the loudest)
     selected_events = []
     for time, vol in spikes:
         if len(selected_events) >= num_shorts: break
-        if all(abs(time - ev[0]) > 60 for ev in selected_events):
+        if all(abs(time - ev[0]) > 45 for ev in selected_events):
             selected_events.append((time, vol))
             
-    for base_time, vol in selected_events:
-        # Find all spikes within 45 seconds of this peak (the duration of a fight)
-        fight_times = [t for t, _ in spikes if base_time <= t <= base_time + 45]
-        
-        if fight_times:
-            end_time = max(fight_times)
-            start_sec = max(0, base_time - 10) # 10s before
-            duration = (end_time - start_sec) + 10 # 10s after
-            
+    # Sort chronologically
+    selected_events.sort(key=lambda x: x[0])
+    
+    for time, vol in selected_events:
+        start_sec = max(0, int(time - 10))
+        duration = 45 # Default duration
+        # Look forward 45 seconds for other loud spikes to extend the clip
+        extended_times = [t for t, _ in spikes if time <= t <= time + 45]
+        if extended_times:
+            end_time = max(extended_times)
+            duration = (end_time - start_sec) + 10
             duration = min(duration, 180) # Cap at 3 minutes
-            print(f"🔥 Found fight starting at {start_sec}s, lasting {int(duration)}s!")
-            clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
+        
+        print(f"🔥 Found fight at {start_sec}s, lasting {int(duration)}s")
+        clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
 
 elif mode == "manual":
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
@@ -74,7 +79,7 @@ elif mode == "manual":
             clips_to_make.append({"start": start_sec, "duration": custom_duration})
 
 if not clips_to_make:
-    print("❌ Error: No fights found or no manual timestamps provided.")
+    print("❌ Error: No spikes found.")
     sys.exit(1)
 
 for i, clip in enumerate(clips_to_make):
@@ -105,8 +110,7 @@ for i, clip in enumerate(clips_to_make):
         )
         
         cmd = [
-            "ffmpeg", "-y", 
-            "-ss", str(start_sec), "-t", str(duration), 
+            "ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), 
             "-i", "video.mp4", 
             "-filter_complex", filter_complex,
             "-map", "[out]", "-map", "0:a",
