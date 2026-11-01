@@ -2,6 +2,8 @@ import sys
 import os
 import subprocess
 import re
+import wave
+import audioop
 
 mode = os.environ.get("MODE", "auto")
 num_shorts = int(os.environ.get("NUM_SHORTS", "3"))
@@ -14,6 +16,7 @@ custom_duration = (custom_duration_mins * 60) + custom_duration_secs
 
 clips_to_make = []
 
+# 1. Get Video Info
 cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate", "-of", "csv=s=x:p=0", "video.mp4"]
 res_raw = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip()
 nums = [int(s) for s in re.findall(r'\d+', res_raw)]
@@ -29,31 +32,32 @@ except:
 target_fps = 30 if orig_fps <= 45 else 60
 
 if mode == "auto":
-    print(f"🤖 Running FAST native FFmpeg scanner (1s intervals)...")
-    # Using asetnsamples to output ONLY 1 line per second. Very fast.
-    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "asetnsamples=44100,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level", "-f", "null", "-"]
-    result = subprocess.run(cmd_scan, capture_output=True, text=True)
-    log = result.stderr
+    print("🤖 Extracting audio track for FAST scanning...")
+    # Extract audio to WAV
+    subprocess.run(["ffmpeg", "-y", "-i", "video.mp4", "-vn", "-acodec", "pcm_s16le", "-ar", "8000", "-ac", "1", "audio.wav"], check=True)
     
-    spikes = []
-    current_time = 0.0
-    for line in log.split('\n'):
-        if 'pts_time:' in line:
-            try: current_time = float(line.split('pts_time:')[1].split(' ')[0])
-            except: pass
-        if 'RMS_level=' in line:
-            try:
-                vol = float(line.split('RMS_level=')[1].split(' ')[0])
-                if vol > -50: # Ignore absolute silence
-                    spikes.append((current_time, vol))
-            except: pass
-                
-    print(f"✅ Analyzed audio (found {len(spikes)} data points).")
+    print("🤖 Scanning audio data for spikes...")
+    with wave.open("audio.wav", 'rb') as wf:
+        chunk_size = 8000 # 1 second of audio
+        max_frames = []
+        current_sec = 0
+        while True:
+            data = wf.readframes(chunk_size)
+            if not data: break
             
-    spikes.sort(key=lambda x: x[1], reverse=True)
+            # Get max volume of this 1-second chunk
+            try:
+                max_val = audioop.max(data, 2)
+                max_frames.append((current_sec, max_val))
+            except:
+                pass
+            current_sec += 1
+            
+    # Sort by loudest
+    max_frames.sort(key=lambda x: x[1], reverse=True)
     
     selected_events = []
-    for time, vol in spikes:
+    for time, vol in max_frames:
         if len(selected_events) >= num_shorts: break
         if all(abs(time - ev[0]) > 60 for ev in selected_events):
             selected_events.append((time, vol))
@@ -62,8 +66,10 @@ if mode == "auto":
     
     for time, vol in selected_events:
         start_sec = max(0, int(time - 10))
-        duration = 60 
-        clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
+        clips_to_make.append({"start": int(start_sec), "duration": 60})
+        
+    if os.path.exists("audio.wav"):
+        os.remove("audio.wav")
 
 elif mode == "manual":
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
