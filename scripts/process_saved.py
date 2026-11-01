@@ -29,26 +29,41 @@ except:
 target_fps = 30 if orig_fps <= 45 else 60
 
 if mode == "auto":
-    print(f"🤖 AI scanning fast (using FFmpeg volume detect)...")
-    # Fast scanning using volumedetect
-    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "volumedetect", "-f", "null", "-"]
+    print(f"🤖 Running FAST native FFmpeg scanner...")
+    # Using silencedetect to find loud moments natively in milliseconds
+    cmd_scan = ["ffmpeg", "-i", "video.mp4", "-af", "silencedetect=noise=-30dB:d=1", "-f", "null", "-"]
     result = subprocess.run(cmd_scan, capture_output=True, text=True)
+    log = result.stderr
     
-    max_vol_match = re.search(r"max_volume: ([-\d.]+) dB", result.stderr)
-    max_vol = float(max_vol_match.group(1)) if max_vol_match else -10.0
-    print(f"✅ Max volume detected: {max_vol} dB")
-    
-    # We need the video duration to space out the shorts
-    duration_cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "video.mp4"]
-    vid_dur = float(subprocess.run(duration_cmd, capture_output=True, text=True).stdout.strip())
-    
-    # Since fast scan can't give exact timestamps per second, 
-    # we space the clips evenly but target the moments right after audio peaks.
-    segment_length = vid_dur / (num_shorts + 1)
-    for i in range(1, num_shorts + 1):
-        # Estimate start time based on segments
-        start_sec = int(segment_length * i)
-        clips_to_make.append({"start": start_sec, "duration": 60})
+    # Native FFmpeg outputs 'silence_start' and 'silence_end'. 
+    # Loud moments are the gaps BETWEEN silence.
+    silences = []
+    for line in log.split('\n'):
+        if 'silence_start:' in line:
+            try: silences.append(float(line.split('silence_start:')[1].split()[0]))
+            except: pass
+        elif 'silence_end:' in line:
+            try: silences.append(float(line.split('silence_end:')[1].split()[0]))
+            except: pass
+            
+    # If we found silences, the loud parts are between them. 
+    # If the video is constant action (no silence), we just space them out.
+    if len(silences) > 2:
+        # Pick gaps
+        for i in range(0, len(silences)-1, 2):
+            if len(clips_to_make) >= num_shorts: break
+            start = int(silences[i])
+            # avoid duplicates
+            if not any(abs(start - c["start"]) < 60 for c in clips_to_make):
+                clips_to_make.append({"start": start, "duration": 60})
+                
+    # Fallback if no silence found (constant gameplay)
+    if not clips_to_make:
+        duration_cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", "video.mp4"]
+        vid_dur = float(subprocess.run(duration_cmd, capture_output=True, text=True).stdout.strip())
+        segment_length = vid_dur / (num_shorts + 1)
+        for i in range(1, num_shorts + 1):
+            clips_to_make.append({"start": int(segment_length * i), "duration": 60})
 
 elif mode == "manual":
     times = [t.strip() for t in timestamps_input.split(",") if t.strip()]
@@ -60,7 +75,7 @@ elif mode == "manual":
             clips_to_make.append({"start": start_sec, "duration": custom_duration})
 
 if not clips_to_make:
-    print("❌ Error: No clips to make.")
+    print("❌ Error: No clips found.")
     sys.exit(1)
 
 for i, clip in enumerate(clips_to_make):
