@@ -31,13 +31,12 @@ target_fps = 30 if orig_fps <= 45 else 60
 
 if mode == "auto":
     print("🤖 Extracting audio to RAM...")
-    # Pipe audio directly to memory instead of saving to disk
     cmd_audio = ["ffmpeg", "-i", "video.mp4", "-vn", "-acodec", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "s16le", "-"]
     result = subprocess.run(cmd_audio, capture_output=True)
     raw_audio = result.stdout
     
     print("🤖 Scanning audio memory for spikes...")
-    chunk_size = 16000 # 1 second
+    chunk_size = 16000
     max_frames = []
     
     for i in range(0, len(raw_audio), chunk_size):
@@ -83,7 +82,7 @@ for i, clip in enumerate(clips_to_make):
     
     if layout == "standard":
         vf = f"crop='min(iw,ih*9/16)':ih,fps={target_fps}"
-        cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-vf", vf, "-af", "aresample=async=1", "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", f"short_{i+1}.mp4"]
+        cmd = ["ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), "-i", "video.mp4", "-vf", vf, "-af", "aresample=async=1", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-c:a", "aac", "-b:a", "128k", f"short_{i+1}.mp4"]
     else:
         gw = int(1420 * scale_factor)
         gh = int(920 * scale_factor)
@@ -109,8 +108,8 @@ for i, clip in enumerate(clips_to_make):
             "-filter_complex", filter_complex,
             "-map", "[out]", "-map", "0:a",
             "-af", "aresample=async=1", 
-            "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-pix_fmt", "yuv420p", 
-            "-c:a", "aac", "-b:a", "192k", 
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-pix_fmt", "yuv420p", 
+            "-c:a", "aac", "-b:a", "128k", 
             f"short_{i+1}.mp4"
         ]
 
