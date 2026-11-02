@@ -12,7 +12,7 @@ on:
         - auto
         - manual
       num_shorts:
-        description: 'How many Shorts? (Auto Mode only)'
+        description: 'How many Shorts?'
         required: true
         default: '3'
       timestamps:
@@ -39,9 +39,6 @@ on:
 jobs:
   process:
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,16 +46,11 @@ jobs:
           python-version: '3.11'
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      
-      # FIX: Find the latest successful "Download Video" run and grab the artifact
       - name: Download Saved Video
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          RUN_ID=$(gh run list --workflow=download.yml --status=success --limit=1 --json databaseId --jq '.[0].databaseId')
-          echo "Found Download Run ID: $RUN_ID"
-          gh run download $RUN_ID -n downloaded-video
-          
+        uses: actions/download-artifact@v4
+        with:
+          name: downloaded-video
+          path: .
       - name: Run AI Processor
         env:
           MODE: ${{ github.event.inputs.mode }}
@@ -73,3 +65,4 @@ jobs:
         with:
           name: final-shorts
           path: short_*.mp4
+          if-no-files-found: warn
