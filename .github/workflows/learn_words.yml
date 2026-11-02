@@ -26,6 +26,7 @@ jobs:
       - name: Create Cookies
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
       - name: Download Video
+        continue-on-error: true
         run: |
           yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github --ignore-errors --no-abort-on-error --retries infinite --fragment-retries infinite -f "b[ext=mp4]" -o "video.mp4" "${{ github.event.inputs.video_url }}"
       - name: Extract Audio
@@ -40,16 +41,13 @@ jobs:
           model = WhisperModel('small', device='cpu', compute_type='int8')
           segments, _ = model.transcribe('audio.wav', language='zh', beam_size=5)
           
-          # List of game announcement phrases to ignore
           game_phrases = ['请关注', '本场热力', '飞机很快', '特种兵请准备', '字幕by', '打两个人', '来车了', '跟上一边', '在那边']
           
           with open('transcript.txt', 'w', encoding='utf-8') as f:
               for seg in segments:
                   text = seg.text.strip()
-                  # Skip if it's just a game announcement
                   if any(phrase in text for phrase in game_phrases):
                       continue
-                  # Skip if the text is too short (like 1-2 characters, usually noise)
                   if len(text) < 3:
                       continue
                   f.write(text + '\n')
