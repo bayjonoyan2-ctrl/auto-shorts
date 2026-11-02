@@ -1,5 +1,10 @@
 yt-dlp
-opencv-python-headless
+tensorflow-cpu
+tensorflow-hub
+soundfile
+scipy
 numpy
-audioop-lts
-faster-whisper
+funasr
+modelscope
+torch
+torchaudio
