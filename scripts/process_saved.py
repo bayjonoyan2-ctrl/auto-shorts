@@ -15,18 +15,25 @@ num_shorts = int(os.environ.get("NUM_SHORTS", "3"))
 
 clips_to_make = []
 
+# Get video resolution to scale your coordinates perfectly
+cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", "video.mp4"]
+res_raw = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip()
+nums = [int(s) for s in re.findall(r'\d+', res_raw)]
+vid_w = nums[0]
+scale_factor = vid_w / 1920.0
+
 if mode == "auto":
     print("🎬 Extracting audio...")
     subprocess.run(["ffmpeg", "-y", "-i", "video.mp4", "-vn", "-ac", "1", "-ar", "16000", "audio.wav"], check=True)
     
     print("🧠 Loading YAMNet (finding shouts/laughs)...")
-    model = hub.load("https://tfhub.dev/google/yamnet/1")
+    model = hub.load("https://tfhub.dev/google/tf2-preview/yamnet/1") # Use hub to load correctly
     with open(model.class_map_path().numpy().decode()) as f:
         names = [r["display_name"] for r in csv.DictReader(f)]
         
     def ids(keys): return [names.index(k) for k in keys if k in names]
     VOICE = ids(["Shout", "Yell", "Screaming", "Laughter"])
-    ACTION = ids(["Gunshot", "Explosion"])
+    ACTION = ids(["Gunshot, gunfire", "Explosion"])
     
     wav, sr = sf.read("audio.wav", dtype="float32")
     HOP = 0.48
@@ -52,7 +59,6 @@ if not clips_to_make:
     print("❌ No clips found.")
     sys.exit(1)
 
-# Save the timestamps to a file so we can process them later
 with open("clips.json", "w") as f:
     json.dump(clips_to_make, f)
 
@@ -61,8 +67,16 @@ for i, clip in enumerate(clips_to_make):
     duration = clip["duration"]
     print(f"Creating Short {i+1} at {start_sec}s...")
     
-    GAME_W, GAME_H, GAME_X, GAME_Y = 1420, 920, 0, 45
-    CAM_W, CAM_H, CAM_X, CAM_Y = 360, 320, 1550, 650
+    # Scale your coordinates to match the video
+    GAME_W = int(1420 * scale_factor)
+    GAME_H = int(920 * scale_factor)
+    GAME_X = int(0 * scale_factor)
+    GAME_Y = int(45 * scale_factor)
+    
+    CAM_W = int(360 * scale_factor)
+    CAM_H = int(320 * scale_factor)
+    CAM_X = int(1550 * scale_factor)
+    CAM_Y = int(650 * scale_factor)
     
     filter_complex = (
         "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
@@ -83,9 +97,8 @@ for i, clip in enumerate(clips_to_make):
     ]
     subprocess.run(cmd, check=True)
 
-print("✅ Shorts created! Now generating AI titles and subtitles...")
+print("✅ Shorts created! Now generating AI titles...")
 
-# Run the title/subtitle generator in a separate process to avoid TF conflict
 title_script = """
 import json
 from funasr import AutoModel
