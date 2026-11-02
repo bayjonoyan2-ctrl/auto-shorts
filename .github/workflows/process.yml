@@ -73,10 +73,14 @@ jobs:
         run: python scripts/process_saved.py
         
 <<<<<<< HEAD
+<<<<<<< HEAD
       - name: Upload Shorts and Titles
 =======
        - name: Upload Shorts
 >>>>>>> 87dc6646886b49dc184b3b45962adaf70a047236
+=======
+      - name: Upload Shorts and Titles
+>>>>>>> 9b5dfa928b011cab047a1fb8b1c042ab21d16f75
         uses: actions/upload-artifact@v4
         with:
           name: final-shorts
