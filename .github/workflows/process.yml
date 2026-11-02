@@ -1,12 +1,40 @@
-name: 2. Process Video
+name: 2. Process Video (No Download)
 
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'Mode (auto or manual)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+        - auto
+        - manual
       num_shorts:
         description: 'How many Shorts?'
         required: true
         default: '3'
+      timestamps:
+        description: 'Manual Mode: Paste times (e.g. 00:01:00, 00:05:30)'
+        required: false
+        default: ''
+      duration_mins:
+        description: 'Manual Mode: Duration Minutes'
+        required: false
+        default: '0'
+      duration_secs:
+        description: 'Manual Mode: Duration Seconds'
+        required: false
+        default: '30'
+      layout:
+        description: 'Layout'
+        required: true
+        default: 'author'
+        type: choice
+        options:
+        - author
+        - standard
 
 jobs:
   process:
@@ -29,11 +57,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RUN_ID=$(gh run list --workflow=download.yml --status=success --limit=1 --json databaseId --jq '.[0].databaseId')
+          echo "Found Download Run ID: $RUN_ID"
           gh run download $RUN_ID -n downloaded-video
 
       - name: Run AI Processor
         env:
+          MODE: ${{ github.event.inputs.mode }}
           NUM_SHORTS: ${{ github.event.inputs.num_shorts }}
+          TIMESTAMPS: ${{ github.event.inputs.timestamps }}
+          DURATION_MINS: ${{ github.event.inputs.duration_mins }}
+          DURATION_SECS: ${{ github.event.inputs.duration_secs }}
+          LAYOUT: ${{ github.event.inputs.layout }}
         run: python scripts/process_saved.py
         
       - name: Upload Shorts and Titles
