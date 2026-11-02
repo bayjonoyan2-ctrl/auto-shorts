@@ -23,11 +23,16 @@ jobs:
           deno-version: v2.x
       - name: Install AI Libraries
         run: pip install yt-dlp faster-whisper
-      - name: Download Video
-        run: |
-          yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github --retries infinite -f "b[ext=mp4]" -o "video.mp4" "${{ github.event.inputs.video_url }}"
+      
+      # 1. Create cookies FIRST
       - name: Create Cookies
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+        
+      # 2. Download Video SECOND
+      - name: Download Video
+        run: |
+          yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github --ignore-errors --no-abort-on-error --retries infinite --fragment-retries infinite -f "b[ext=mp4]" -o "video.mp4" "${{ github.event.inputs.video_url }}"
+          
       - name: Extract Audio
         run: |
           ffmpeg -i video.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
