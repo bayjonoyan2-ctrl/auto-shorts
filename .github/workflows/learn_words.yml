@@ -23,28 +23,36 @@ jobs:
           deno-version: v2.x
       - name: Install AI Libraries
         run: pip install yt-dlp faster-whisper
-      
-      # 1. Create cookies FIRST
       - name: Create Cookies
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
-        
-      # 2. Download Video SECOND
       - name: Download Video
         run: |
           yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github --ignore-errors --no-abort-on-error --retries infinite --fragment-retries infinite -f "b[ext=mp4]" -o "video.mp4" "${{ github.event.inputs.video_url }}"
-          
       - name: Extract Audio
         run: |
           ffmpeg -i video.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
-      - name: Transcribe with AI (Chinese)
+      - name: Transcribe and Filter AI (Chinese)
         run: |
           python -c "
           from faster_whisper import WhisperModel
+          import re
+          
           model = WhisperModel('small', device='cpu', compute_type='int8')
           segments, _ = model.transcribe('audio.wav', language='zh', beam_size=5)
+          
+          # List of game announcement phrases to ignore
+          game_phrases = ['请关注', '本场热力', '飞机很快', '特种兵请准备', '字幕by', '打两个人', '来车了', '跟上一边', '在那边']
+          
           with open('transcript.txt', 'w', encoding='utf-8') as f:
               for seg in segments:
-                  f.write(seg.text + '\n')
+                  text = seg.text.strip()
+                  # Skip if it's just a game announcement
+                  if any(phrase in text for phrase in game_phrases):
+                      continue
+                  # Skip if the text is too short (like 1-2 characters, usually noise)
+                  if len(text) < 3:
+                      continue
+                  f.write(text + '\n')
           "
       - name: Upload Transcript
         uses: actions/upload-artifact@v4
