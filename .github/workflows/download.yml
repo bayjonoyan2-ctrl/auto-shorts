@@ -15,6 +15,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install Deno
         uses: denoland/setup-deno@v1
         with:
@@ -24,10 +26,12 @@ jobs:
       - name: Create Cookies
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
       
-      - name: Download Video
-        continue-on-error: true
+      - name: Download Video (FFmpeg Downloader)
         run: |
-          yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github --ignore-errors --no-abort-on-error --retries 50 --fragment-retries 50 --socket-timeout 20 -f "b[ext=mp4]" -o "video.mp4" "${{ github.event.inputs.video_url }}"
+          # Get the direct video URL
+          URL=$(yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github -g -f "b[ext=mp4]" "${{ github.event.inputs.video_url }}" | head -n 1)
+          # Use FFmpeg to download the file natively (bypasses yt-dlp download errors)
+          ffmpeg -y -headers "Cookie: $(cat cookies.txt | grep -v '^#' | awk '{print $6"="$7}' | tr '\n' ';')" -i "$URL" -c copy video.mp4
           
       - name: Save Video to Cloud
         uses: actions/upload-artifact@v4
