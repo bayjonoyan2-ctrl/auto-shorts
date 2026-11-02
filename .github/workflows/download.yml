@@ -23,9 +23,13 @@ jobs:
         run: pip install yt-dlp
       - name: Create Cookies
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+      
+      # THE FIX: Added continue-on-error: true
       - name: Download Video
+        continue-on-error: true
         run: |
           yt-dlp --cookies cookies.txt --js-runtimes deno --remote-components ejs:github --ignore-errors --no-abort-on-error --retries infinite --fragment-retries infinite -f "b[ext=mp4]" -o "video.mp4" "${{ github.event.inputs.video_url }}"
+          
       - name: Save Video to Cloud
         uses: actions/upload-artifact@v4
         with:
