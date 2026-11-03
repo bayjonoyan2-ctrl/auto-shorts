@@ -59,10 +59,8 @@ if mode == "auto":
             idx = int(check_t / HOP)
             if idx < len(hype) and hype[idx] > 0.05:
                 hype_end = check_t
-                
         duration = (hype_end - start_sec) + 5
         duration = min(duration, 180)
-        
         clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
 
 if not clips_to_make:
@@ -72,7 +70,7 @@ if not clips_to_make:
 with open("clips.json", "w") as f:
     json.dump(clips_to_make, f)
 
-print("✅ Generating AI Titles...")
+print("✅ Generating AI Titles and Subtitles...")
 
 title_script = """
 import json
@@ -81,6 +79,7 @@ from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 from llama_cpp import Llama
 from huggingface_hub import hf_hub_download
+import re
 
 with open("clips.json") as f:
     clips = json.load(f)
@@ -98,12 +97,18 @@ for i, clip in enumerate(clips):
     raw = sv.generate(input=clip_wav, language="zh", use_itn=True)[0]["text"]
     text = rich_transcription_postprocess(raw)
     
-    # Generate Clickbait Title
-    prompt = f"You are a YouTube Shorts expert. Translate this Chinese gaming text into a highly clickbait, exciting English title (max 40 chars). Do not use quotes or punctuation.\\nText: {text[:100]}"
+    # Translate to English subtitles
+    sub_prompt = f"Translate this Chinese gaming audio into an English subtitle. Output ONLY the translation:\\n{text[:200]}"
+    sub_out = llm.create_chat_completion(messages=[{"role": "user", "content": sub_prompt}], max_tokens=50, temperature=0.3)
+    english_sub = sub_out["choices"][0]["message"]["content"].strip().replace('"', '')
+    
+    with open(f"sub_{i+1}.srt", "w", encoding="utf-8") as f:
+        f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{english_sub}\\n")
+        
+    # Create title
+    prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 40 chars). Do not use quotes or punctuation:\\n{text[:100]}"
     out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.8)
     title = out["choices"][0]["message"]["content"].strip()
-    
-    import re
     title = re.sub(r'[\\\\/*?:"<>|]', "", title).replace(" ", "_")
     
     with open(f"title_{i+1}.txt", "w", encoding="utf-8") as f:
@@ -134,13 +139,14 @@ for i, clip in enumerate(clips_to_make):
     CAM_X = int(1550 * scale_factor)
     CAM_Y = int(650 * scale_factor)
     
-    # REMOVED subtitles completely. Clean Author layout.
+    # THE FIX: Burn the English SRT file perfectly into the video
     filter_complex = (
         "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
         f"[0:v]crop={GAME_W}:{GAME_H}:{GAME_X}:{GAME_Y},scale=1080:-2[game];"
         f"[0:v]crop={CAM_W}:{CAM_H}:{CAM_X}:{CAM_Y},scale=800:-2[cam];"
         f"[bg][cam]overlay=(W-w)/2:150[bg_cam];"
-        f"[bg_cam][game]overlay=0:950[out]"
+        f"[bg_cam][game]overlay=0:950[base];"
+        f"[base]subtitles=sub_{i+1}.srt:force_style='FontName=Arial,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=20'[out]"
     )
     
     cmd = [
@@ -153,5 +159,9 @@ for i, clip in enumerate(clips_to_make):
         f"short_{i+1}_{video_title}.mp4"
     ]
     subprocess.run(cmd, check=True)
+    
+    # Clean up subtitles
+    if os.path.exists(f"sub_{i+1}.srt"):
+        os.remove(f"sub_{i+1}.srt")
 
-print("✅ All Shorts and Titles generated successfully!")
+print("✅ All Shorts generated successfully!")
