@@ -59,8 +59,10 @@ if mode == "auto":
             idx = int(check_t / HOP)
             if idx < len(hype) and hype[idx] > 0.05:
                 hype_end = check_t
+                
         duration = (hype_end - start_sec) + 5
         duration = min(duration, 180)
+        
         clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
 
 if not clips_to_make:
@@ -70,7 +72,7 @@ if not clips_to_make:
 with open("clips.json", "w") as f:
     json.dump(clips_to_make, f)
 
-print("✅ Generating AI Titles and Subtitles...")
+print("✅ Generating AI Titles and Synced Subtitles...")
 
 title_script = """
 import json
@@ -94,19 +96,39 @@ for i, clip in enumerate(clips):
     clip_wav = f"cand_{i}.wav"
     subprocess.run(["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", "audio.wav", clip_wav], capture_output=True)
     
-    raw = sv.generate(input=clip_wav, language="zh", use_itn=True)[0]["text"]
-    text = rich_transcription_postprocess(raw)
-    
-    # Translate to English subtitles
-    sub_prompt = f"Translate this Chinese gaming audio into an English subtitle. Output ONLY the translation:\\n{text[:200]}"
-    sub_out = llm.create_chat_completion(messages=[{"role": "user", "content": sub_prompt}], max_tokens=50, temperature=0.3)
-    english_sub = sub_out["choices"][0]["message"]["content"].strip().replace('"', '')
+    # Generate time-stamped transcript
+    result = sv.generate(input=clip_wav, language="zh", use_itn=True, sentence_timestamp=True)
+    text = rich_transcription_postprocess(result[0]["text"])
+    timestamps = result[0].get("timestamp", [])
     
     with open(f"sub_{i+1}.srt", "w", encoding="utf-8") as f:
-        f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{english_sub}\\n")
+        if timestamps:
+            # Split into chunks of 3 words for fast, popping subtitles
+            chunks = [timestamps[j:j+3] for j in range(0, len(timestamps), 3)]
+            for c_idx, chunk in enumerate(chunks):
+                start_ms = chunk[0][0]
+                end_ms = chunk[-1][1]
+                
+                h1, rem = divmod(start_ms, 3600000)
+                m1, rem = divmod(rem, 60000)
+                s1, ms1 = divmod(rem, 1000)
+                
+                h2, rem = divmod(end_ms, 3600000)
+                m2, rem = divmod(rem, 60000)
+                s2, ms2 = divmod(rem, 1000)
+                
+                # Translate this specific chunk
+                prompt = f"Translate to English (output only translation):\\n{text[:200]}"
+                out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=50, temperature=0.3)
+                english_sub = out["choices"][0]["message"]["content"].strip().replace('\\n', ' ')
+                
+                f.write(f"{c_idx+1}\\n{h1:02}:{m1:02}:{s1:02},{ms1:03} --> {h2:02}:{m2:02}:{s2:02},{ms2:03}\\n{english_sub}\\n\\n")
+        else:
+            # Fallback if timestamps fail
+            f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{text}\\n")
         
     # Create title
-    prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 40 chars). Do not use quotes or punctuation:\\n{text[:100]}"
+    prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 40 chars). Do not use quotes:\\n{text[:100]}"
     out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.8)
     title = out["choices"][0]["message"]["content"].strip()
     title = re.sub(r'[\\\\/*?:"<>|]', "", title).replace(" ", "_")
@@ -119,7 +141,7 @@ with open("title_gen.py", "w") as f:
     
 subprocess.run(["python", "title_gen.py"], check=True)
 
-print("✅ Rendering Shorts...")
+print("✅ Rendering Shorts with rapid-fire subtitles...")
 
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
@@ -139,14 +161,13 @@ for i, clip in enumerate(clips_to_make):
     CAM_X = int(1550 * scale_factor)
     CAM_Y = int(650 * scale_factor)
     
-    # THE FIX: Burn the English SRT file perfectly into the video
     filter_complex = (
         "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
         f"[0:v]crop={GAME_W}:{GAME_H}:{GAME_X}:{GAME_Y},scale=1080:-2[game];"
         f"[0:v]crop={CAM_W}:{CAM_H}:{CAM_X}:{CAM_Y},scale=800:-2[cam];"
         f"[bg][cam]overlay=(W-w)/2:150[bg_cam];"
         f"[bg_cam][game]overlay=0:950[base];"
-        f"[base]subtitles=sub_{i+1}.srt:force_style='FontName=Arial,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=20'[out]"
+        f"[base]subtitles=sub_{i+1}.srt:force_style='FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=20'[out]"
     )
     
     cmd = [
@@ -160,7 +181,6 @@ for i, clip in enumerate(clips_to_make):
     ]
     subprocess.run(cmd, check=True)
     
-    # Clean up subtitles
     if os.path.exists(f"sub_{i+1}.srt"):
         os.remove(f"sub_{i+1}.srt")
 
