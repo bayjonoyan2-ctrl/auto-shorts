@@ -26,7 +26,7 @@ if mode == "auto":
     print("🎬 Extracting audio...")
     subprocess.run(["ffmpeg", "-y", "-i", "video.mp4", "-vn", "-ac", "1", "-ar", "16000", "audio.wav"], check=True)
     
-    print("🧠 Loading YAMNet from Kaggle...")
+    print("🧠 Loading YAMNet (finding shouts/laughs)...")
     model = hub.load("https://www.kaggle.com/models/google/yamnet/TensorFlow2/yamnet/1")
     
     with open(model.class_map_path().numpy().decode()) as f:
@@ -63,7 +63,8 @@ if not clips_to_make:
 with open("clips.json", "w") as f:
     json.dump(clips_to_make, f)
 
-print("✅ Generating AI Subtitles and .srt files...")
+print("✅ Generating AI Timestamped Subtitles and Titles...")
+
 title_script = """
 import json
 from funasr import AutoModel
@@ -71,7 +72,6 @@ from funasr.utils.postprocess_utils import rich_transcription_postprocess
 from llama_cpp import Llama
 from huggingface_hub import hf_hub_download
 import subprocess
-import os
 
 with open("clips.json") as f:
     clips = json.load(f)
@@ -86,38 +86,34 @@ for i, clip in enumerate(clips):
     clip_wav = f"cand_{i}.wav"
     subprocess.run(["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", "audio.wav", clip_wav], capture_output=True)
     
-    raw = sv.generate(input=clip_wav, language="zh", use_itn=True)[0]["text"]
-    text = rich_transcription_postprocess(raw)
+    # Transcribe with timestamps
+    result = sv.generate(input=clip_wav, language="zh", use_itn=True)
+    text = rich_transcription_postprocess(result[0]["text"])
     
-    # Use AI to translate Chinese directly into English subtitles
-    prompt = f"Translate this Chinese gaming text into English. Output ONLY the translation, nothing else:\\n{text[:200]}"
-    out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=50, temperature=0.3)
-    translation = out["choices"][0]["message"]["content"].strip().replace('"', '')
-    
-    # Create SRT file
+    # Create timestamped SRT file
     with open(f"short_{i+1}.srt", "w", encoding="utf-8") as f:
-        f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{translation}\\n")
+        f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{text}\\n")
         
-    # Save translation to a file so the video renderer can use it
-    with open(f"short_{i+1}_sub.txt", "w", encoding="utf-8") as f:
-        f.write(translation)
+    # Generate Clickbait Title
+    prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 50 chars). Do not use quotes:\\n{text[:100]}"
+    out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.7)
+    title = out["choices"][0]["message"]["content"].strip().replace('"', '')
+    
+    # Save title to a single file
+    with open(f"short_{i+1}_title.txt", "w", encoding="utf-8") as f:
+        f.write(title)
 """
 with open("title_gen.py", "w") as f:
     f.write(title_script)
     
 subprocess.run(["python", "title_gen.py"], check=True)
 
-print("✅ Rendering Shorts with burned-in subtitles...")
+print("✅ Rendering Shorts with burned-in dynamic subtitles...")
+
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
     duration = clip["duration"]
     print(f"Creating Short {i+1}...")
-    
-    with open(f"short_{i+1}_sub.txt", "r", encoding="utf-8") as f:
-        sub_text = f.read().strip()
-        
-    # Escape subtitle text for FFmpeg
-    sub_text = sub_text.replace("'", "").replace(":", "").replace(",", "")
     
     GAME_W = int(1420 * scale_factor)
     GAME_H = int(920 * scale_factor)
@@ -128,14 +124,14 @@ for i, clip in enumerate(clips_to_make):
     CAM_X = int(1550 * scale_factor)
     CAM_Y = int(650 * scale_factor)
     
-    # Add the drawtext filter for the subtitle at the bottom
+    # FFmpeg will now burn the SRT file dynamically into the video
     filter_complex = (
         "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
         f"[0:v]crop={GAME_W}:{GAME_H}:{GAME_X}:{GAME_Y},scale=1080:-2[game];"
         f"[0:v]crop={CAM_W}:{CAM_H}:{CAM_X}:{CAM_Y},scale=800:-2[cam];"
         f"[bg][cam]overlay=(W-w)/2:150[bg_cam];"
         f"[bg_cam][game]overlay=0:950[base];"
-        f"[base]drawtext=text='{sub_text}':fontcolor=white:fontsize=45:box=1:boxcolor=black@0.6:boxborderw=10:x=(w-text_w)/2:y=h-120[out]"
+        f"[base]subtitles=short_{i+1}.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=20'[out]"
     )
     
     cmd = [
@@ -149,4 +145,4 @@ for i, clip in enumerate(clips_to_make):
     ]
     subprocess.run(cmd, check=True)
 
-print("✅ All Shorts and Subtitles generated successfully!")
+print("✅ All Shorts, SRT files, and Titles generated successfully!")
