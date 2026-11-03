@@ -53,20 +53,14 @@ if mode == "auto":
     candidates = sorted(float(p * HOP) for p in top)
     
     for t in candidates:
-        # Start 5 seconds before the hype peak
         start_sec = max(0, t - 5)
-        
-        # Calculate the hype duration by looking at surrounding high scores
         hype_end = t
         for check_t in np.arange(t, t + 30, HOP):
             idx = int(check_t / HOP)
-            if idx < len(hype) and hype[idx] > 0.05: # If still hype
+            if idx < len(hype) and hype[idx] > 0.05:
                 hype_end = check_t
                 
-        # End 5 seconds after hype finishes
         duration = (hype_end - start_sec) + 5
-        
-        # Cap at 3 minutes
         duration = min(duration, 180)
         
         clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
@@ -78,7 +72,7 @@ if not clips_to_make:
 with open("clips.json", "w") as f:
     json.dump(clips_to_make, f)
 
-print("✅ Generating AI Timestamped Subtitles and Titles...")
+print("✅ Generating AI Titles...")
 
 title_script = """
 import json
@@ -104,15 +98,13 @@ for i, clip in enumerate(clips):
     raw = sv.generate(input=clip_wav, language="zh", use_itn=True)[0]["text"]
     text = rich_transcription_postprocess(raw)
     
-    # Create SRT file
-    with open(f"sub_{i+1}.srt", "w", encoding="utf-8") as f:
-        f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{text}\\n")
-        
-    prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 40 chars). Do not use quotes:\\n{text[:100]}"
-    out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.7)
-    import re
+    # Generate Clickbait Title
+    prompt = f"You are a YouTube Shorts expert. Translate this Chinese gaming text into a highly clickbait, exciting English title (max 40 chars). Do not use quotes or punctuation.\\nText: {text[:100]}"
+    out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.8)
     title = out["choices"][0]["message"]["content"].strip()
-    title = re.sub(r'[\\/*?:"<>|]', "", title).replace(" ", "_")
+    
+    import re
+    title = re.sub(r'[\\\\/*?:"<>|]', "", title).replace(" ", "_")
     
     with open(f"title_{i+1}.txt", "w", encoding="utf-8") as f:
         f.write(title)
@@ -122,7 +114,7 @@ with open("title_gen.py", "w") as f:
     
 subprocess.run(["python", "title_gen.py"], check=True)
 
-print("✅ Rendering Shorts with burned-in subtitles...")
+print("✅ Rendering Shorts...")
 
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
@@ -142,13 +134,13 @@ for i, clip in enumerate(clips_to_make):
     CAM_X = int(1550 * scale_factor)
     CAM_Y = int(650 * scale_factor)
     
+    # REMOVED subtitles completely. Clean Author layout.
     filter_complex = (
         "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
         f"[0:v]crop={GAME_W}:{GAME_H}:{GAME_X}:{GAME_Y},scale=1080:-2[game];"
         f"[0:v]crop={CAM_W}:{CAM_H}:{CAM_X}:{CAM_Y},scale=800:-2[cam];"
         f"[bg][cam]overlay=(W-w)/2:150[bg_cam];"
-        f"[bg_cam][game]overlay=0:950[base];"
-        f"[base]subtitles=sub_{i+1}.srt:force_style='FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=20'[out]"
+        f"[bg_cam][game]overlay=0:950[out]"
     )
     
     cmd = [
@@ -161,8 +153,5 @@ for i, clip in enumerate(clips_to_make):
         f"short_{i+1}_{video_title}.mp4"
     ]
     subprocess.run(cmd, check=True)
-    
-    if os.path.exists(f"sub_{i+1}.srt"):
-        os.remove(f"sub_{i+1}.srt")
 
-print("✅ All Shorts generated successfully!")
+print("✅ All Shorts and Titles generated successfully!")
