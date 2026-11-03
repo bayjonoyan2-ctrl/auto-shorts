@@ -89,5 +89,5 @@ jobs:
         with:
           name: final-shorts
           path: |
-            *.mp4
+            short_*.mp4
             title_*.txt

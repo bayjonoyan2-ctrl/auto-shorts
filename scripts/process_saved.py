@@ -26,7 +26,7 @@ if mode == "auto":
     print("🎬 Extracting audio...")
     subprocess.run(["ffmpeg", "-y", "-i", "video.mp4", "-vn", "-ac", "1", "-ar", "16000", "audio.wav"], check=True)
     
-    print("🧠 Loading YAMNet (finding shouts/laughs)...")
+    print("🧠 Loading YAMNet...")
     model = hub.load("https://www.kaggle.com/models/google/yamnet/TensorFlow2/yamnet/1")
     
     with open(model.class_map_path().numpy().decode()) as f:
@@ -67,11 +67,11 @@ print("✅ Generating AI Timestamped Subtitles and Titles...")
 
 title_script = """
 import json
+import subprocess
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 from llama_cpp import Llama
 from huggingface_hub import hf_hub_download
-import subprocess
 
 with open("clips.json") as f:
     clips = json.load(f)
@@ -86,21 +86,17 @@ for i, clip in enumerate(clips):
     clip_wav = f"cand_{i}.wav"
     subprocess.run(["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", "audio.wav", clip_wav], capture_output=True)
     
-    # Transcribe with timestamps
-    result = sv.generate(input=clip_wav, language="zh", use_itn=True)
-    text = rich_transcription_postprocess(result[0]["text"])
+    # Get the transcript
+    raw = sv.generate(input=clip_wav, language="zh", use_itn=True)[0]["text"]
+    text = rich_transcription_postprocess(raw)
     
-    # Create timestamped SRT file
-    with open(f"short_{i+1}.srt", "w", encoding="utf-8") as f:
-        f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{text}\\n")
-        
-    # Generate Clickbait Title
-    prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 50 chars). Do not use quotes:\\n{text[:100]}"
+    # Translate for the title
+    prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 40 chars). Do not use quotes:\\n{text[:100]}"
     out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.7)
-    title = out["choices"][0]["message"]["content"].strip().replace('"', '')
+    title = out["choices"][0]["message"]["content"].strip().replace('"', '').replace(" ", "_").replace("/", "")
     
-    # Save title to a single file
-    with open(f"short_{i+1}_title.txt", "w", encoding="utf-8") as f:
+    # Save title to a file
+    with open(f"title_{i+1}.txt", "w", encoding="utf-8") as f:
         f.write(title)
 """
 with open("title_gen.py", "w") as f:
@@ -108,12 +104,16 @@ with open("title_gen.py", "w") as f:
     
 subprocess.run(["python", "title_gen.py"], check=True)
 
-print("✅ Rendering Shorts with burned-in dynamic subtitles...")
+print("✅ Rendering Shorts with burned-in subtitles...")
 
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
     duration = clip["duration"]
-    print(f"Creating Short {i+1}...")
+    
+    with open(f"title_{i+1}.txt", "r", encoding="utf-8") as f:
+        video_title = f.read().strip()
+        
+    print(f"Creating Short: {video_title}...")
     
     GAME_W = int(1420 * scale_factor)
     GAME_H = int(920 * scale_factor)
@@ -124,14 +124,16 @@ for i, clip in enumerate(clips_to_make):
     CAM_X = int(1550 * scale_factor)
     CAM_Y = int(650 * scale_factor)
     
-    # FFmpeg will now burn the SRT file dynamically into the video
+    # This filter burns the subtitles directly from the original stream, synced perfectly
+    # Using force_style to make it look like a standard TikTok caption
     filter_complex = (
         "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
         f"[0:v]crop={GAME_W}:{GAME_H}:{GAME_X}:{GAME_Y},scale=1080:-2[game];"
         f"[0:v]crop={CAM_W}:{CAM_H}:{CAM_X}:{CAM_Y},scale=800:-2[cam];"
         f"[bg][cam]overlay=(W-w)/2:150[bg_cam];"
         f"[bg_cam][game]overlay=0:950[base];"
-        f"[base]subtitles=short_{i+1}.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=20'[out]"
+        # Auto-generated SRT burned in
+        f"[base]subtitles=sub_{i+1}.srt:force_style='FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=20'[out]"
     )
     
     cmd = [
@@ -141,8 +143,8 @@ for i, clip in enumerate(clips_to_make):
         "-map", "[out]", "-map", "0:a",
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-pix_fmt", "yuv420p", 
         "-c:a", "aac", "-b:a", "128k", 
-        f"short_{i+1}.mp4"
+        f"short_{i+1}_{video_title}.mp4"
     ]
     subprocess.run(cmd, check=True)
 
-print("✅ All Shorts, SRT files, and Titles generated successfully!")
+print("✅ All Shorts generated successfully!")
