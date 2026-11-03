@@ -51,7 +51,14 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
         
-      # THE FIX: Install CPU-only PyTorch to save 3GB of disk space
+      - name: Free Disk Space (Ubuntu)
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo apt-get clean
+          
       - name: Install AI Libraries
         run: |
           pip install numpy soundfile scipy kagglehub huggingface_hub
