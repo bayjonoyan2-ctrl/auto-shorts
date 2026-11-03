@@ -53,8 +53,23 @@ if mode == "auto":
     candidates = sorted(float(p * HOP) for p in top)
     
     for t in candidates:
-        start_sec = max(0, t - 10)
-        clips_to_make.append({"start": int(start_sec), "duration": 45})
+        # Start 5 seconds before the hype peak
+        start_sec = max(0, t - 5)
+        
+        # Calculate the hype duration by looking at surrounding high scores
+        hype_end = t
+        for check_t in np.arange(t, t + 30, HOP):
+            idx = int(check_t / HOP)
+            if idx < len(hype) and hype[idx] > 0.05: # If still hype
+                hype_end = check_t
+                
+        # End 5 seconds after hype finishes
+        duration = (hype_end - start_sec) + 5
+        
+        # Cap at 3 minutes
+        duration = min(duration, 180)
+        
+        clips_to_make.append({"start": int(start_sec), "duration": int(duration)})
 
 if not clips_to_make:
     print("❌ No clips found.")
@@ -86,16 +101,17 @@ for i, clip in enumerate(clips):
     clip_wav = f"cand_{i}.wav"
     subprocess.run(["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", "audio.wav", clip_wav], capture_output=True)
     
-    # Get the transcript
     raw = sv.generate(input=clip_wav, language="zh", use_itn=True)[0]["text"]
     text = rich_transcription_postprocess(raw)
     
-    # Translate for the title
+    # Create SRT file
+    with open(f"sub_{i+1}.srt", "w", encoding="utf-8") as f:
+        f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{text}\\n")
+        
     prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 40 chars). Do not use quotes:\\n{text[:100]}"
     out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.7)
     title = out["choices"][0]["message"]["content"].strip().replace('"', '').replace(" ", "_").replace("/", "")
     
-    # Save title to a file
     with open(f"title_{i+1}.txt", "w", encoding="utf-8") as f:
         f.write(title)
 """
@@ -124,15 +140,12 @@ for i, clip in enumerate(clips_to_make):
     CAM_X = int(1550 * scale_factor)
     CAM_Y = int(650 * scale_factor)
     
-    # This filter burns the subtitles directly from the original stream, synced perfectly
-    # Using force_style to make it look like a standard TikTok caption
     filter_complex = (
         "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
         f"[0:v]crop={GAME_W}:{GAME_H}:{GAME_X}:{GAME_Y},scale=1080:-2[game];"
         f"[0:v]crop={CAM_W}:{CAM_H}:{CAM_X}:{CAM_Y},scale=800:-2[cam];"
         f"[bg][cam]overlay=(W-w)/2:150[bg_cam];"
         f"[bg_cam][game]overlay=0:950[base];"
-        # Auto-generated SRT burned in
         f"[base]subtitles=sub_{i+1}.srt:force_style='FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=20'[out]"
     )
     
@@ -146,5 +159,8 @@ for i, clip in enumerate(clips_to_make):
         f"short_{i+1}_{video_title}.mp4"
     ]
     subprocess.run(cmd, check=True)
+    
+    if os.path.exists(f"sub_{i+1}.srt"):
+        os.remove(f"sub_{i+1}.srt")
 
 print("✅ All Shorts generated successfully!")
