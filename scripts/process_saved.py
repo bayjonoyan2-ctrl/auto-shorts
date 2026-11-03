@@ -63,42 +63,7 @@ if not clips_to_make:
 with open("clips.json", "w") as f:
     json.dump(clips_to_make, f)
 
-for i, clip in enumerate(clips_to_make):
-    start_sec = clip["start"]
-    duration = clip["duration"]
-    print(f"Creating Short {i+1} at {start_sec}s...")
-    
-    GAME_W = int(1420 * scale_factor)
-    GAME_H = int(920 * scale_factor)
-    GAME_X = int(0 * scale_factor)
-    GAME_Y = int(45 * scale_factor)
-    
-    CAM_W = int(360 * scale_factor)
-    CAM_H = int(320 * scale_factor)
-    CAM_X = int(1550 * scale_factor)
-    CAM_Y = int(650 * scale_factor)
-    
-    filter_complex = (
-        "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
-        f"[0:v]crop={GAME_W}:{GAME_H}:{GAME_X}:{GAME_Y},scale=1080:-2[game];"
-        f"[0:v]crop={CAM_W}:{CAM_H}:{CAM_X}:{CAM_Y},scale=800:-2[cam];"
-        f"[bg][cam]overlay=(W-w)/2:150[bg_cam];"
-        f"[bg_cam][game]overlay=0:950[out]"
-    )
-    
-    cmd = [
-        "ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), 
-        "-i", "video.mp4", 
-        "-filter_complex", filter_complex,
-        "-map", "[out]", "-map", "0:a",
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-pix_fmt", "yuv420p", 
-        "-c:a", "aac", "-b:a", "128k", 
-        f"short_{i+1}.mp4"
-    ]
-    subprocess.run(cmd, check=True)
-
-print("✅ Shorts created! Now generating AI titles...")
-
+print("✅ Generating AI Subtitles and .srt files...")
 title_script = """
 import json
 from funasr import AutoModel
@@ -106,6 +71,7 @@ from funasr.utils.postprocess_utils import rich_transcription_postprocess
 from llama_cpp import Llama
 from huggingface_hub import hf_hub_download
 import subprocess
+import os
 
 with open("clips.json") as f:
     clips = json.load(f)
@@ -119,21 +85,68 @@ for i, clip in enumerate(clips):
     duration = clip["duration"]
     clip_wav = f"cand_{i}.wav"
     subprocess.run(["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", "audio.wav", clip_wav], capture_output=True)
+    
     raw = sv.generate(input=clip_wav, language="zh", use_itn=True)[0]["text"]
     text = rich_transcription_postprocess(raw)
     
-    prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 50 chars):\\n{text[:100]}"
-    out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.7)
-    title = out["choices"][0]["message"]["content"].strip()
+    # Use AI to translate Chinese directly into English subtitles
+    prompt = f"Translate this Chinese gaming text into English. Output ONLY the translation, nothing else:\\n{text[:200]}"
+    out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=50, temperature=0.3)
+    translation = out["choices"][0]["message"]["content"].strip().replace('"', '')
     
-    with open(f"short_{i+1}_title.txt", "w", encoding="utf-8") as f:
-        f.write(title)
-        
+    # Create SRT file
     with open(f"short_{i+1}.srt", "w", encoding="utf-8") as f:
-        f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{title}\\n")
+        f.write(f"1\\n00:00:00,000 --> 00:00:{duration},000\\n{translation}\\n")
+        
+    # Save translation to a file so the video renderer can use it
+    with open(f"short_{i+1}_sub.txt", "w", encoding="utf-8") as f:
+        f.write(translation)
 """
 with open("title_gen.py", "w") as f:
     f.write(title_script)
     
 subprocess.run(["python", "title_gen.py"], check=True)
-print("✅ Titles and Subtitles generated!")
+
+print("✅ Rendering Shorts with burned-in subtitles...")
+for i, clip in enumerate(clips_to_make):
+    start_sec = clip["start"]
+    duration = clip["duration"]
+    print(f"Creating Short {i+1}...")
+    
+    with open(f"short_{i+1}_sub.txt", "r", encoding="utf-8") as f:
+        sub_text = f.read().strip()
+        
+    # Escape subtitle text for FFmpeg
+    sub_text = sub_text.replace("'", "").replace(":", "").replace(",", "")
+    
+    GAME_W = int(1420 * scale_factor)
+    GAME_H = int(920 * scale_factor)
+    GAME_X = int(0 * scale_factor)
+    GAME_Y = int(45 * scale_factor)
+    CAM_W = int(360 * scale_factor)
+    CAM_H = int(320 * scale_factor)
+    CAM_X = int(1550 * scale_factor)
+    CAM_Y = int(650 * scale_factor)
+    
+    # Add the drawtext filter for the subtitle at the bottom
+    filter_complex = (
+        "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
+        f"[0:v]crop={GAME_W}:{GAME_H}:{GAME_X}:{GAME_Y},scale=1080:-2[game];"
+        f"[0:v]crop={CAM_W}:{CAM_H}:{CAM_X}:{CAM_Y},scale=800:-2[cam];"
+        f"[bg][cam]overlay=(W-w)/2:150[bg_cam];"
+        f"[bg_cam][game]overlay=0:950[base];"
+        f"[base]drawtext=text='{sub_text}':fontcolor=white:fontsize=45:box=1:boxcolor=black@0.6:boxborderw=10:x=(w-text_w)/2:y=h-120[out]"
+    )
+    
+    cmd = [
+        "ffmpeg", "-y", "-ss", str(start_sec), "-t", str(duration), 
+        "-i", "video.mp4", 
+        "-filter_complex", filter_complex,
+        "-map", "[out]", "-map", "0:a",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-pix_fmt", "yuv420p", 
+        "-c:a", "aac", "-b:a", "128k", 
+        f"short_{i+1}.mp4"
+    ]
+    subprocess.run(cmd, check=True)
+
+print("✅ All Shorts and Subtitles generated successfully!")
