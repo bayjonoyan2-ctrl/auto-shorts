@@ -84,7 +84,7 @@ jobs:
           LAYOUT: ${{ github.event.inputs.layout }}
         run: python scripts/process_saved.py
         
-            - name: Upload Shorts and Titles
+      - name: Upload Shorts and Titles
         uses: actions/upload-artifact@v4
         with:
           name: final-shorts
