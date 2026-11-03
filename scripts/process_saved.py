@@ -5,6 +5,7 @@ import re
 import csv
 import numpy as np
 import soundfile as sf
+import tensorflow as tf
 import tensorflow_hub as hub
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
@@ -15,7 +16,6 @@ num_shorts = int(os.environ.get("NUM_SHORTS", "3"))
 
 clips_to_make = []
 
-# Get video resolution to scale your coordinates perfectly
 cmd_probe = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", "video.mp4"]
 res_raw = subprocess.run(cmd_probe, capture_output=True, text=True).stdout.strip()
 nums = [int(s) for s in re.findall(r'\d+', res_raw)]
@@ -26,8 +26,9 @@ if mode == "auto":
     print("🎬 Extracting audio...")
     subprocess.run(["ffmpeg", "-y", "-i", "video.mp4", "-vn", "-ac", "1", "-ar", "16000", "audio.wav"], check=True)
     
-    print("🧠 Loading YAMNet (finding shouts/laughs)...")
-    model = hub.load("https://tfhub.dev/google/tf2-preview/yamnet/1") # Use hub to load correctly
+    print("🧠 Loading YAMNet from Kaggle...")
+    model = hub.load("https://www.kaggle.com/models/google/yamnet/TensorFlow2/yamnet/1")
+    
     with open(model.class_map_path().numpy().decode()) as f:
         names = [r["display_name"] for r in csv.DictReader(f)]
         
@@ -67,7 +68,6 @@ for i, clip in enumerate(clips_to_make):
     duration = clip["duration"]
     print(f"Creating Short {i+1} at {start_sec}s...")
     
-    # Scale your coordinates to match the video
     GAME_W = int(1420 * scale_factor)
     GAME_H = int(920 * scale_factor)
     GAME_X = int(0 * scale_factor)
