@@ -110,7 +110,9 @@ for i, clip in enumerate(clips):
         
     prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 40 chars). Do not use quotes:\\n{text[:100]}"
     out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.7)
-    title = out["choices"][0]["message"]["content"].strip().replace('"', '').replace(" ", "_").replace("/", "")
+    import re
+    title = out["choices"][0]["message"]["content"].strip()
+    title = re.sub(r'[\\/*?:"<>|]', "", title).replace(" ", "_")
     
     with open(f"title_{i+1}.txt", "w", encoding="utf-8") as f:
         f.write(title)
