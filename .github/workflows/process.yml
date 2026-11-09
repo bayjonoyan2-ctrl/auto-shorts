@@ -15,18 +15,6 @@ on:
         description: 'How many Shorts?'
         required: true
         default: '3'
-      timestamps:
-        description: 'Manual Mode: Paste times (e.g. 00:01:00, 00:05:30)'
-        required: false
-        default: ''
-      duration_mins:
-        description: 'Manual Mode: Duration Minutes'
-        required: false
-        default: '0'
-      duration_secs:
-        description: 'Manual Mode: Duration Seconds'
-        required: false
-        default: '30'
       layout:
         description: 'Layout'
         required: true
@@ -45,30 +33,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-        
-      - name: Free Disk Space (Ubuntu)
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          sudo apt-get clean
-          
-      - name: Install AI Libraries
-        run: |
-          # FORCE pip to use Python 3.11, and install TensorFlow 2.15.0 (which is compatible)
-          python -m pip install --upgrade pip
-          python -m pip install numpy==1.26.4 soundfile scipy kagglehub huggingface_hub
-          python -m pip install tensorflow-cpu==2.15.0 tensorflow-hub==0.16.1 tf-keras==2.15.0
-          python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install funasr modelscope llama-cpp-python
-      
       - name: Download Saved Video
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -77,16 +41,22 @@ jobs:
           echo "Found Download Run ID: $RUN_ID"
           gh run download $RUN_ID -n downloaded-video
 
-      - name: Run AI Processor
+      - name: Run AI in Docker (Python 3.11 Environment)
         env:
           MODE: ${{ github.event.inputs.mode }}
           NUM_SHORTS: ${{ github.event.inputs.num_shorts }}
-          TIMESTAMPS: ${{ github.event.inputs.timestamps }}
-          DURATION_MINS: ${{ github.event.inputs.duration_mins }}
-          DURATION_SECS: ${{ github.event.inputs.duration_secs }}
           LAYOUT: ${{ github.event.inputs.layout }}
-        run: python scripts/process_saved.py
-        
+        run: |
+          # This spins up a clean Python 3.11 machine inside GitHub Actions
+          docker run --rm -v "$PWD:/app" -w /app python:3.11-slim bash -c "
+            apt-get update && apt-get install -y ffmpeg
+            pip install numpy soundfile scipy kagglehub huggingface_hub
+            pip install tensorflow-cpu tensorflow-hub tf-keras
+            pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+            pip install funasr modelscope llama-cpp-python
+            python scripts/process_saved.py
+          "
+          
       - name: Upload Shorts and Titles
         uses: actions/upload-artifact@v4
         with:
