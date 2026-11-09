@@ -50,7 +50,6 @@ if mode == "auto":
     hype = uniform_filter1d(voice + 0.3 * action, size=int(8 / HOP))
     peaks, _ = find_peaks(hype, distance=int(60 / HOP))
     
-    # SORTS ALL PEAKS GLOBALLY - NOT JUST FIRST 3
     top = peaks[np.argsort(hype[peaks])[::-1][:num_shorts]]
     candidates = sorted(float(p * HOP) for p in top)
     
@@ -72,25 +71,19 @@ if not clips_to_make:
 with open("clips.json", "w") as f:
     json.dump(clips_to_make, f)
 
-print("✅ Generating AI Titles (No Subtitles)...")
+print("✅ Generating AI Titles...")
 
-title_script = """
-import json
-import subprocess
+# Generate titles directly in this script to fix the subprocess issue
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 from llama_cpp import Llama
 from huggingface_hub import hf_hub_download
-import re
-
-with open("clips.json") as f:
-    clips = json.load(f)
 
 sv = AutoModel(model="iic/SenseVoiceSmall", device="cpu", disable_update=True)
 path = hf_hub_download("Qwen/Qwen2.5-1.5B-Instruct-GGUF", "qwen2.5-1.5b-instruct-q4_k_m.gguf")
 llm = Llama(model_path=path, n_ctx=2048, n_threads=4, verbose=False)
 
-for i, clip in enumerate(clips):
+for i, clip in enumerate(clips_to_make):
     start = clip["start"]
     duration = clip["duration"]
     clip_wav = f"cand_{i}.wav"
@@ -106,12 +99,6 @@ for i, clip in enumerate(clips):
     
     with open(f"title_{i+1}.txt", "w", encoding="utf-8") as f:
         f.write(title)
-"""
-with open("title_gen.py", "w") as f:
-    f.write(title_script)
-    
-# THE FIX: Use sys.executable to run inside the Docker container
-subprocess.run([sys.executable, "title_gen.py"], check=True)
 
 print("✅ Rendering Clean Shorts (No Subtitles)...")
 
@@ -133,7 +120,6 @@ for i, clip in enumerate(clips_to_make):
     CAM_X = int(1550 * scale_factor)
     CAM_Y = int(650 * scale_factor)
     
-    # Clean layout. No subtitles. No burned-in text.
     filter_complex = (
         "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.2:saturation=1.2[bg];"
         f"[0:v]crop={GAME_W}:{GAME_H}:{GAME_X}:{GAME_Y},scale=1080:-2[game];"
