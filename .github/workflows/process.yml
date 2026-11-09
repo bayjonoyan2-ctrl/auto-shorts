@@ -36,6 +36,9 @@ on:
         - author
         - standard
 
+env:
+  PYTHON_VERSION: '3.11'
+
 jobs:
   process:
     runs-on: ubuntu-latest
@@ -45,9 +48,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      # THE FIX: Force setup-python to run first and use 3.11 globally
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
           
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
@@ -63,7 +67,7 @@ jobs:
       - name: Install AI Libraries
         run: |
           pip install numpy soundfile scipy kagglehub huggingface_hub
-          pip install tensorflow-cpu tf-keras tensorflow-hub
+          pip install tensorflow-cpu==2.15.0 tf-keras==2.15.0 tensorflow-hub
           pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install funasr modelscope llama-cpp-python
       
