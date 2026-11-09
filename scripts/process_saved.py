@@ -50,7 +50,7 @@ if mode == "auto":
     hype = uniform_filter1d(voice + 0.3 * action, size=int(8 / HOP))
     peaks, _ = find_peaks(hype, distance=int(60 / HOP))
     
-    # THIS FIXES THE "FIRST 3 CLIPS" ISSUE: Sort by highest score globally
+    # SORTS ALL PEAKS GLOBALLY - NOT JUST FIRST 3
     top = peaks[np.argsort(hype[peaks])[::-1][:num_shorts]]
     candidates = sorted(float(p * HOP) for p in top)
     
@@ -110,7 +110,8 @@ for i, clip in enumerate(clips):
 with open("title_gen.py", "w") as f:
     f.write(title_script)
     
-subprocess.run(["python", "title_gen.py"], check=True)
+# THE FIX: Use sys.executable to run inside the Docker container
+subprocess.run([sys.executable, "title_gen.py"], check=True)
 
 print("✅ Rendering Clean Shorts (No Subtitles)...")
 
