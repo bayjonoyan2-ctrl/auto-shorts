@@ -47,7 +47,6 @@ jobs:
           NUM_SHORTS: ${{ github.event.inputs.num_shorts }}
           LAYOUT: ${{ github.event.inputs.layout }}
         run: |
-          # This spins up a clean Python 3.11 machine inside GitHub Actions
           docker run --rm -v "$PWD:/app" -w /app python:3.11-slim bash -c "
             apt-get update && apt-get install -y ffmpeg
             pip install numpy soundfile scipy kagglehub huggingface_hub
