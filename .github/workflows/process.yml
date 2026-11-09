@@ -62,11 +62,12 @@ jobs:
           
       - name: Install AI Libraries
         run: |
-          pip install numpy soundfile scipy kagglehub huggingface_hub
-          # THE FIX: Install the latest version, not the 2.15.0 version
-          pip install tensorflow-cpu tensorflow-hub tf-keras
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          pip install funasr modelscope llama-cpp-python
+          # FORCE pip to use Python 3.11, and install TensorFlow 2.15.0 (which is compatible)
+          python -m pip install --upgrade pip
+          python -m pip install numpy==1.26.4 soundfile scipy kagglehub huggingface_hub
+          python -m pip install tensorflow-cpu==2.15.0 tensorflow-hub==0.16.1 tf-keras==2.15.0
+          python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install funasr modelscope llama-cpp-python
       
       - name: Download Saved Video
         env:
