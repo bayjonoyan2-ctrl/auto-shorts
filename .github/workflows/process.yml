@@ -63,7 +63,7 @@ jobs:
       - name: Install AI Libraries
         run: |
           pip install numpy soundfile scipy kagglehub huggingface_hub
-          pip install tensorflow-cpu tf-keras
+          pip install tensorflow-cpu tf-keras tensorflow-hub
           pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install funasr modelscope llama-cpp-python
       
