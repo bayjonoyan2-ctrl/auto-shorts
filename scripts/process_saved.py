@@ -71,44 +71,13 @@ if not clips_to_make:
 with open("clips.json", "w") as f:
     json.dump(clips_to_make, f)
 
-print("✅ Generating AI Titles...")
-
-from funasr import AutoModel
-from funasr.utils.postprocess_utils import rich_transcription_postprocess
-from llama_cpp import Llama
-from huggingface_hub import hf_hub_download
-
-sv = AutoModel(model="iic/SenseVoiceSmall", device="cpu", disable_update=True)
-path = hf_hub_download("Qwen/Qwen2.5-1.5B-Instruct-GGUF", "qwen2.5-1.5b-instruct-q4_k_m.gguf")
-llm = Llama(model_path=path, n_ctx=2048, n_threads=4, verbose=False)
-
-for i, clip in enumerate(clips_to_make):
-    start = clip["start"]
-    duration = clip["duration"]
-    clip_wav = f"cand_{i}.wav"
-    subprocess.run(["ffmpeg", "-y", "-ss", str(start), "-t", str(duration), "-i", "audio.wav", clip_wav], capture_output=True)
-    
-    raw = sv.generate(input=clip_wav, language="zh", use_itn=True)[0]["text"]
-    text = rich_transcription_postprocess(raw)
-    
-    prompt = f"Translate this Chinese gaming text into a short, clickbait English YouTube Shorts title (max 40 chars). Do not use quotes or punctuation:\\n{text[:100]}"
-    out = llm.create_chat_completion(messages=[{"role": "user", "content": prompt}], max_tokens=20, temperature=0.8)
-    title = out["choices"][0]["message"]["content"].strip()
-    title = re.sub(r'[\\\\/*?:"<>|]', "", title).replace(" ", "_")
-    
-    with open(f"title_{i+1}.txt", "w", encoding="utf-8") as f:
-        f.write(title)
-
-print("✅ Rendering Clean Shorts (No Subtitles)...")
+print("✅ Rendering Clean Shorts...")
 
 for i, clip in enumerate(clips_to_make):
     start_sec = clip["start"]
     duration = clip["duration"]
     
-    with open(f"title_{i+1}.txt", "r", encoding="utf-8") as f:
-        video_title = f.read().strip()
-        
-    print(f"Creating Short: {video_title}...")
+    print(f"Creating Short {i+1}...")
     
     GAME_W = int(1420 * scale_factor)
     GAME_H = int(920 * scale_factor)
@@ -134,8 +103,8 @@ for i, clip in enumerate(clips_to_make):
         "-map", "[out]", "-map", "0:a",
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-pix_fmt", "yuv420p", 
         "-c:a", "aac", "-b:a", "128k", 
-        f"short_{i+1}_{video_title}.mp4"
+        f"short_{i+1}.mp4"
     ]
     subprocess.run(cmd, check=True)
 
-print("✅ All Shorts and Titles generated successfully!")
+print("✅ All Shorts generated successfully!")
