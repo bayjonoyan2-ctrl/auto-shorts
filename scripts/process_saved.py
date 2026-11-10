@@ -73,7 +73,6 @@ with open("clips.json", "w") as f:
 
 print("✅ Generating AI Titles...")
 
-# Generate titles directly in this script to fix the subprocess issue
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 from llama_cpp import Llama
