@@ -10,11 +10,6 @@ import tensorflow_hub as hub
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 import json
-import site
-sys.path.append(site.getusersitepackages())
-
-# THE FIX: Add user site-packages to path so it finds funasr
-sys.path.append(site.getusersitepackages())
 
 mode = os.environ.get("MODE", "auto")
 num_shorts = int(os.environ.get("NUM_SHORTS", "3"))
